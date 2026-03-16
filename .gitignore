@@ -1,0 +1,42 @@
+# ── Personal config ────────────────────────────────────────
+# Copy config.yaml.example → config.yaml and fill in your values.
+# Your real project ID, bucket name, and email stay off git.
+config.yaml
+
+# ── Test output ────────────────────────────────────────────
+# Contains real financial data from API calls — not for public repos.
+test_output/
+
+# ── macOS ──────────────────────────────────────────────────
+.DS_Store
+
+# ── Python ─────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+
+# ── Virtual environments ────────────────────────────────────
+venv/
+.venv/
+
+# ── Credentials — never commit these ───────────────────────
+*-key.json
+service-account*.json
+credentials*.json
+.env
+.env.*
+
+# ── Editors ────────────────────────────────────────────────
+.vscode/
+.idea/
+
+# ── Claude IDE (local settings — permissions log, not for public repos) ──
+.claude/
+
+# ── Internal docs (maintenance notes, bug logs, private guides) ────────────
+MAINTENANCE.md
+MAINTENANCE_GUIDE.md
+project_guide.md
+fixed_bugs.md
+check.md
+docs/

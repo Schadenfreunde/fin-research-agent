@@ -1,0 +1,39 @@
+# ── .gcloudignore — used by "gcloud builds submit" instead of .gitignore ──────
+#
+# config.yaml is in .gitignore (to keep project IDs off public repos) but it IS
+# required inside the Docker container. Listing it here would exclude it, so we
+# intentionally omit it so Cloud Build sends it to the Docker build context.
+#
+# All other patterns mirror .gitignore.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Test output (real financial data — not for public repos)
+test_output/
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+
+# Credentials — never include these in the image
+*-key.json
+service-account*.json
+credentials*.json
+.env
+.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Git / Claude
+.git/
+.gitignore
+.claude/

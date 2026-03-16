@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinResearchAgent</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 580px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      letter-spacing: -0.02em;
+    }
+
+    .header p {
+      margin-top: 8px;
+      color: #94a3b8;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    .card {
+      background: #1e2433;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      padding: 28px;
+    }
+
+    .field {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    select {
+      width: 100%;
+      padding: 10px 14px;
+      background: #0f1117;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type="text"]:focus,
+    input[type="email"]:focus,
+    select:focus {
+      border-color: #4f9eff;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 10px 14px;
+      background: #0f1117;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+      outline: none;
+      resize: vertical;
+      font-family: inherit;
+      line-height: 1.5;
+      transition: border-color 0.15s;
+    }
+
+    textarea:focus {
+      border-color: #4f9eff;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: #4a5568;
+    }
+
+    .hint {
+      margin-top: 5px;
+      font-size: 0.75rem;
+      color: #4a5568;
+    }
+
+    .type-selector {
+      display: flex;
+      gap: 10px;
+    }
+
+    .type-option {
+      flex: 1;
+      position: relative;
+    }
+
+    .type-option input[type="radio"] {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .type-option label {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 10px;
+      background: #0f1117;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      transition: all 0.15s;
+      text-align: center;
+    }
+
+    .type-option label .type-title {
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 3px;
+      font-size: 0.9rem;
+    }
+
+    .type-option label .type-desc {
+      font-size: 0.72rem;
+      color: #4a5568;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .type-option input[type="radio"]:checked + label {
+      border-color: #4f9eff;
+      background: #1a2a3f;
+      color: #93c5fd;
+    }
+
+    .type-option input[type="radio"]:checked + label .type-title {
+      color: #93c5fd;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 12px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-top: 4px;
+    }
+
+    .submit-btn:hover {
+      background: #1d4ed8;
+    }
+
+    .submit-btn:disabled {
+      background: #2d3748;
+      color: #4a5568;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      line-height: 1.5;
+      display: none;
+    }
+
+    .status.success {
+      background: #0d2b1e;
+      border: 1px solid #166534;
+      color: #86efac;
+      display: block;
+    }
+
+    .status.error {
+      background: #2b0d0d;
+      border: 1px solid #991b1b;
+      color: #fca5a5;
+      display: block;
+    }
+
+    .run-id {
+      margin-top: 8px;
+      font-size: 0.72rem;
+      color: #4a5568;
+      font-family: monospace;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #2d3748;
+      margin: 22px 0;
+    }
+
+    .examples {
+      margin-top: 24px;
+    }
+
+    .examples h3 {
+      font-size: 0.75rem;
+      color: #4a5568;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 10px;
+    }
+
+    .example-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tag {
+      padding: 4px 10px;
+      background: #1a2433;
+      border: 1px solid #2d3748;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+
+    .tag:hover {
+      border-color: #4f9eff;
+      color: #93c5fd;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #fff;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>FinResearchAgent</h1>
+      <p>AI-powered buy-side equity and macro research.<br>Enter a ticker or topic — the team does the rest.<br>Completed reports are saved to your Cloud Storage bucket.</p>
+    </div>
+
+    <div class="card">
+      <form id="researchForm">
+
+        <!-- Report type selector -->
+        <div class="field">
+          <label>Report Type</label>
+          <div class="type-selector">
+            <div class="type-option">
+              <input type="radio" name="report_type" id="type-equity" value="equity" checked>
+              <label for="type-equity">
+                <span class="type-title">Equity Research</span>
+                <span class="type-desc">21-section investment memo with rating</span>
+              </label>
+            </div>
+            <div class="type-option">
+              <input type="radio" name="report_type" id="type-macro" value="macro">
+              <label for="type-macro">
+                <span class="type-title">Macro / Thematic</span>
+                <span class="type-desc">Economic outlook &amp; investment implications</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Topic input -->
+        <div class="field">
+          <label id="topicLabel" for="topic">Ticker Symbol</label>
+          <input
+            type="text"
+            id="topic"
+            name="topic"
+            placeholder="e.g. AAPL"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="characters"
+            spellcheck="false"
+          />
+          <div class="hint" id="topicHint">Enter a stock ticker to generate a full equity research memo.</div>
+        </div>
+
+        <!-- Optional context / focus guidance -->
+        <div class="field">
+          <label for="context">
+            Additional Context
+            <span style="color:#4a5568;font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span>
+          </label>
+          <textarea
+            id="context"
+            name="context"
+            placeholder="e.g. Focus on AI revenue growth and GPU supply constraints. Concerned about margin compression in 2025."
+            rows="3"
+          ></textarea>
+          <div class="hint">Guide the research team — focus areas, specific concerns, or hypotheses to test. Leave blank for standard analysis.</div>
+        </div>
+
+        <button type="submit" class="submit-btn" id="submitBtn">Run Research</button>
+      </form>
+
+      <div id="statusMsg" class="status"></div>
+    </div>
+
+    <!-- Example topics -->
+    <div class="examples">
+      <h3>Example topics</h3>
+      <div class="example-tags">
+        <span class="tag" data-topic="AAPL" data-type="equity">AAPL</span>
+        <span class="tag" data-topic="NVDA" data-type="equity">NVDA</span>
+        <span class="tag" data-topic="CTVA" data-type="equity">CTVA</span>
+        <span class="tag" data-topic="MSFT" data-type="equity">MSFT</span>
+        <span class="tag" data-topic="US interest rate outlook 2025" data-type="macro">US Interest Rates</span>
+        <span class="tag" data-topic="Global inflation trends 2025" data-type="macro">Global Inflation</span>
+        <span class="tag" data-topic="AI chip supply chain" data-type="macro">AI Chip Supply Chain</span>
+        <span class="tag" data-topic="US credit spreads outlook" data-type="macro">Credit Spreads</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Update labels when report type changes
+    const topicInput = document.getElementById('topic');
+    const topicLabel = document.getElementById('topicLabel');
+    const topicHint = document.getElementById('topicHint');
+
+    document.querySelectorAll('input[name="report_type"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        if (radio.value === 'equity') {
+          topicLabel.textContent = 'Ticker Symbol';
+          topicInput.placeholder = 'e.g. AAPL';
+          topicInput.setAttribute('autocapitalize', 'characters');
+          topicHint.textContent = 'Enter a stock ticker to generate a full equity research memo.';
+        } else {
+          topicLabel.textContent = 'Research Topic';
+          topicInput.placeholder = 'e.g. US interest rate outlook 2025';
+          topicInput.setAttribute('autocapitalize', 'sentences');
+          topicHint.textContent = 'Describe the macro theme or economic topic you want analyzed.';
+        }
+      });
+    });
+
+    // Example tag clicks
+    document.querySelectorAll('.tag').forEach(tag => {
+      tag.addEventListener('click', () => {
+        const topic = tag.getAttribute('data-topic');
+        const type = tag.getAttribute('data-type');
+        topicInput.value = topic;
+        document.getElementById('type-' + type).checked = true;
+        document.getElementById('type-' + type).dispatchEvent(new Event('change'));
+        topicInput.focus();
+      });
+    });
+
+    // Form submission
+    document.getElementById('researchForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const topic = topicInput.value.trim();
+      const reportType = document.querySelector('input[name="report_type"]:checked').value;
+      const context = document.getElementById('context').value.trim();
+      const btn = document.getElementById('submitBtn');
+      const statusEl = document.getElementById('statusMsg');
+
+      if (!topic) {
+        statusEl.className = 'status error';
+        statusEl.textContent = 'Please enter a ticker symbol or research topic.';
+        return;
+      }
+
+      // Disable button and show loading
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Running research...';
+      statusEl.className = 'status';
+      statusEl.textContent = '';
+
+      try {
+        const formData = new FormData();
+        formData.append('topic', topic);
+        formData.append('report_type', reportType);
+        if (context) formData.append('context', context);
+
+        const response = await fetch('/research', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          statusEl.className = 'status success';
+          statusEl.innerHTML = `
+            <strong>Request accepted.</strong><br>
+            ${data.message}
+            <div class="run-id">Run ID: ${data.run_id}</div>
+            <div class="run-id">Bucket: gs://${data.storage_bucket}/</div>
+          `;
+          e.target.reset();
+          document.getElementById('context').value = '';
+          document.getElementById('type-equity').checked = true;
+          topicLabel.textContent = 'Ticker Symbol';
+          topicInput.placeholder = 'e.g. AAPL';
+        } else {
+          statusEl.className = 'status error';
+          statusEl.textContent = data.error || 'Something went wrong. Please try again.';
+        }
+      } catch (err) {
+        statusEl.className = 'status error';
+        statusEl.textContent = 'Network error. Please check your connection and try again.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run Research';
+      }
+    });
+  </script>
+</body>
+</html>

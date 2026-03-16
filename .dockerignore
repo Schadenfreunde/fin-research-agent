@@ -1,0 +1,16 @@
+.git
+.gitignore
+.claude/
+__pycache__
+*.pyc
+*.pyo
+.env
+.env.*
+*.md
+!prompts/*.md
+venv/
+.venv/
+.vscode/
+.idea/
+.DS_Store
+deploy.sh

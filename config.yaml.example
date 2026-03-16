@@ -1,0 +1,128 @@
+# ============================================================
+# Stock Research Agent — Configuration File
+# ============================================================
+# SETUP: Copy this file to config.yaml and fill in your values.
+#   cp config.yaml.example config.yaml
+#
+# config.yaml is gitignored — your real values never go to git.
+# Edit config.yaml (not this file) before running ./deploy.sh
+# ============================================================
+
+# ------------------------------------------------------------
+# AI MODELS
+# Change model names here to upgrade all agents at once.
+# ------------------------------------------------------------
+models:
+  # Tier 1 — Highest reasoning (Orchestrator, Fact Checker, Review Agent)
+  tier1: "gemini-2.5-flash"
+
+  # Tier 2 — Strong analytical reasoning (Valuation, Earnings Quality)
+  tier2: "gemini-2.5-flash"
+
+  # Tier 3 — Fast structured work (all other agents)
+  tier3: "gemini-2.5-flash"
+
+# ------------------------------------------------------------
+# GOOGLE CLOUD SETTINGS
+# Fill these in with your Google Cloud project details.
+# ------------------------------------------------------------
+google_cloud:
+  project_id: "YOUR_GCP_PROJECT_ID"             # e.g., "my-research-agent-123"
+  region: "us-central1"                        # Cloud Run deployment region
+  reports_bucket: "YOUR_GCS_BUCKET"            # Cloud Storage bucket for saving reports
+  service_name: "fin-research-agent"           # Cloud Run service name (used by deploy.sh)
+  sec_user_agent: "FinResearchAgent your-email@example.com"  # SEC EDGAR requires an email in the User-Agent header
+
+# ------------------------------------------------------------
+# API KEYS — stored as Secret Manager references
+# Never paste actual API keys here. Store them in Secret Manager
+# and reference the secret name below.
+# ------------------------------------------------------------
+secrets:
+  alpha_vantage_key: "alpha-vantage-api-key"  # Secret name in Secret Manager
+  fred_api_key:      "fred-api-key"           # Secret name in Secret Manager
+  finnhub_api_key:   "finnhub-api-key"        # Register free at finnhub.io
+  fmp_api_key:       "fmp-api-key"            # Register free at financialmodelingprep.com
+  core_api_key:      "core-api-key"           # Register free at core.ac.uk/api-keys
+  semantic_scholar_api_key: "semantics-scholar-api-key"  # semanticscholar.org/product/api (optional — API works without key)
+
+# ------------------------------------------------------------
+# SCHEDULED ANALYSIS
+# Add tickers or macro topics to run automatically.
+# Cron schedule is set separately in Cloud Scheduler UI.
+# ------------------------------------------------------------
+scheduled_runs:
+  # Equity tickers to analyze on schedule
+  equity_tickers:
+    - "AAPL"    # Apple Inc.
+    - "MSFT"    # Microsoft Corp.
+    # Add more tickers here, one per line with a dash
+    # - "NVDA"
+
+  # Macro topics to analyze on schedule
+  macro_topics:
+    - "US interest rate outlook"
+    # - "Global inflation trends"
+    # Add more topics here
+
+# ------------------------------------------------------------
+# REVIEW LOOP SETTINGS
+# ------------------------------------------------------------
+review:
+  max_passes: 3          # Maximum review loop iterations before delivering with Review Notes
+                         # Increase if you want more thorough checking (slower)
+                         # Decrease to 1 if you want faster delivery with less QA
+
+# ------------------------------------------------------------
+# REPORT SETTINGS
+# ------------------------------------------------------------
+report:
+  # Investment horizon for equity reports (months)
+  decision_horizon_months: 24
+
+  # Required return hurdle for Buy rating (decimal — 0.30 = 30%)
+  expected_return_hurdle: 0.30
+
+  # Required margin of safety below mid fair value (decimal — 0.25 = 25%)
+  margin_of_safety: 0.25
+
+  # Required skew ratio (E[TR] / bear drawdown must be at or above this)
+  skew_gate: 1.7
+
+  # Quality scorecard thresholds
+  quality_pass_score: 70    # Minimum score for Buy rating
+  quality_sell_floor: 60    # Below this = Sell regardless of gates
+
+  # Benchmark (used in executive summary alpha context)
+  benchmark: "S&P 500"
+  alpha_target_bps: 300     # Required outperformance in basis points
+
+# ------------------------------------------------------------
+# AGENT TIMEOUTS (seconds)
+# Hard wall-clock limit per LLM agent call. On timeout, the
+# pipeline continues with a placeholder — no structured data
+# is lost (Python gathered it before the LLM call started).
+# ------------------------------------------------------------
+timeouts:
+  data_harvester: 720        # 12 min — extended for CORE academic API calls
+  macro_data_agent: 720      # 12 min
+  earnings_quality: 300      # 5 min
+  competitive_analyst: 360   # 6 min
+  fundamental_analyst: 600   # 10 min
+  risk_analyst: 600          # 10 min
+  valuation_analyst: 600     # 10 min
+  quant_modeler_equity: 360  # 6 min
+  macro_analyst: 360         # 6 min
+  default: 600               # 10 min
+
+# ------------------------------------------------------------
+# CONCURRENCY SETTINGS (Vertex AI quota management)
+# Controls how many agents can call Vertex AI simultaneously.
+# ------------------------------------------------------------
+concurrency:
+  # Max simultaneous Vertex AI API calls.
+  # Set to 1 for Free trial GCP to avoid 429 quota limits (sequential).
+  max_parallel_agents: 1
+
+  # How many times to retry an agent that gets a 429 rate-limit error.
+  max_rate_limit_retries: 10
