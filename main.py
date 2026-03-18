@@ -1112,12 +1112,58 @@ async def _run_equity_pipeline(topic: str, run_id: str,
         logger.warning("[%s] %d/6 analysts returned placeholders", run_id, _placeholder_count)
 
     # ── Step 3: Quant Modeler ──────────────────────────────────────────────────
+    # IMPORTANT: Do NOT pass the full structured_data here.
+    # For large-cap stocks the full payload (20+ raw API JSON blobs, financial
+    # statements, SEC filings, news articles) can exceed 500K input tokens,
+    # which causes the model to return 0 output tokens and error.
+    # The quant agent only needs price/volume/metrics data — extract those sections.
     logger.info("[%s] STEP 3: Quant Modeler (technical indicators, beta, VaR, risk metrics)...", run_id)
+
+    # Sections the quant modeler actually needs (price, OHLCV, metrics, earnings)
+    # Everything else (income statements, balance sheets, SEC filings, news, FIGI)
+    # is not used for technical / statistical analysis and bloats the context.
+    _QUANT_SECTIONS = {
+        "price_finnhub",
+        "historical_prices_2y_weekly_finnhub",
+        "key_metrics_finnhub",
+        "earnings_finnhub",
+        "analyst_ratings_finnhub",
+        "historical_ohlcv_polygon",
+        "ticker_details_polygon",
+        "key_metrics_fmp",
+    }
+
+    def _extract_structured_sections(text: str, keep: set) -> str:
+        """
+        Extract only the named ## sections from a structured data block.
+        Preserves the header lines (everything before the first ## section).
+        """
+        import re as _re
+        parts = _re.split(r'\n(?=## )', text)
+        header_parts = [p for p in parts if not p.startswith("## ")]
+        kept_parts   = [
+            p for p in parts
+            if p.startswith("## ") and any(
+                p.startswith(f"## {name}") for name in keep
+            )
+        ]
+        result = "\n".join(header_parts + kept_parts)
+        original_len = len(text)
+        kept_len     = len(result)
+        logger.info(
+            "[%s] quant structured data: %d → %d chars (%.0f%% of full payload)",
+            run_id, original_len, kept_len,
+            100.0 * kept_len / original_len if original_len else 0,
+        )
+        return result
+
+    quant_structured_data = _extract_structured_sections(structured_data, _QUANT_SECTIONS)
+
     quant_context = (
         f"EQUITY QUANT ANALYSIS REQUEST\n"
         f"Ticker / Company: {topic} ({company_name})\n"
         f"Run ID: {run_id}\n\n"
-        f"STRUCTURED DATA FROM APIs:\n{structured_data}\n\n"
+        f"PRICE & METRICS DATA FROM APIs:\n{quant_structured_data}\n\n"
         f"FUNDAMENTAL ANALYSIS (THESIS & MARKET):\n{fundamental_market_out}\n\n"
         f"FUNDAMENTAL ANALYSIS (FINANCIALS):\n{fundamental_financials_out}\n\n"
         f"VALUATION & SCENARIOS ANALYSIS:\n{valuation_out}\n\n"
