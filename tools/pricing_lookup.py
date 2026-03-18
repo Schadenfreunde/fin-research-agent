@@ -122,14 +122,20 @@ def _extract_price_per_million(sku: dict) -> Optional[float]:
 # Map from keywords found in SKU descriptions to canonical model-name substrings
 # used in debug_report.py for substring matching.
 _SKU_MODEL_MAP = [
+    # Gemini 3.x — must be checked BEFORE 3.0 / 2.x to avoid "3" matching "3.1"
+    ("gemini 3.1 pro",         "gemini-3.1-pro-preview"),
+    ("gemini 3.1 flash lite",  "gemini-3.1-flash-lite"),
+    ("gemini 3.1 flash",       "gemini-3.1-flash-preview"),
+    ("gemini 3 flash",         "gemini-3-flash-preview"),
+    ("gemini 3 pro",           "gemini-3-pro-preview"),
     # Gemini 2.5
-    ("gemini 2.5 flash",    "gemini-2.5-flash"),
-    ("gemini 2.5 pro",      "gemini-2.5-pro"),
+    ("gemini 2.5 flash",       "gemini-2.5-flash"),
+    ("gemini 2.5 pro",         "gemini-2.5-pro"),
     # Gemini 2.0
-    ("gemini 2.0 flash",    "gemini-2.0-flash"),
+    ("gemini 2.0 flash",       "gemini-2.0-flash"),
     # Gemini 1.5
-    ("gemini 1.5 flash",    "gemini-1.5-flash"),
-    ("gemini 1.5 pro",      "gemini-1.5-pro"),
+    ("gemini 1.5 flash",       "gemini-1.5-flash"),
+    ("gemini 1.5 pro",         "gemini-1.5-pro"),
     # Claude on Vertex — descriptions typically include the full model name
     ("claude-opus-4-6",     "claude-opus-4-6"),
     ("claude-sonnet-4-6",   "claude-sonnet-4-6"),
