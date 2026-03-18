@@ -21,6 +21,7 @@ from pathlib import Path
 from google import adk
 from google.adk.agents import Agent
 from google.adk.tools import FunctionTool
+from google.genai import types as genai_types
 
 # ── Load configuration ─────────────────────────────────────────────────────────
 
@@ -358,6 +359,11 @@ report_compiler = Agent(
     tools=[
         _tool(save_report),
     ],
+    # A full 21-section equity memo requires 15K–30K output tokens.
+    # Without this, the ADK default (8192) silently truncates or produces empty output.
+    generate_content_config=genai_types.GenerateContentConfig(
+        max_output_tokens=65536,
+    ),
 )
 
 
@@ -456,6 +462,10 @@ macro_report_compiler = Agent(
     tools=[
         _tool(save_report),
     ],
+    # Same as equity compiler: large output required for a full macro report.
+    generate_content_config=genai_types.GenerateContentConfig(
+        max_output_tokens=65536,
+    ),
 )
 
 

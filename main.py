@@ -832,6 +832,28 @@ async def _gather_macro_data(run_id: str, topic: str = "") -> str:
     return macro_text
 
 
+# ── Compiler input sanitisation ───────────────────────────────────────────────
+
+_PLACEHOLDER_PREFIXES_COMPILE = (
+    "[AGENT TIMEOUT:", "[RATE LIMIT:", "[HTTP ERROR:", "[ERROR:", "[EMPTY RESPONSE:",
+)
+
+def _clean_for_compiler(label: str, output: str) -> str:
+    """
+    Replace error/timeout placeholders with a neutral note before they reach the
+    report compiler. Passing raw placeholders to the compiler causes it to return
+    0 output tokens — likely a model safety/coherence refusal when given malformed
+    inputs. A clean note allows the compiler to skip the section gracefully.
+    """
+    if not output or any(output.strip().startswith(p) for p in _PLACEHOLDER_PREFIXES_COMPILE):
+        return (
+            f"[NOTE: {label} output was unavailable for this run "
+            f"(agent timed out or errored). Omit this section from the final report "
+            f"and note the gap in the Executive Summary.]"
+        )
+    return output
+
+
 # ── Per-agent data slicing (Phase 2C) ──────────────────────────────────────────
 # Each analyst receives only the structured-data sections relevant to their role.
 # Reduces per-agent input tokens by 40–70% vs passing the full ~100 KB blob.
@@ -1179,6 +1201,8 @@ async def _run_equity_pipeline(topic: str, run_id: str,
 
     # ── Step 4: Report Compiler ────────────────────────────────────────────────
     # PIPELINE GATE: only reached after all 6 analysts AND quant modeler have completed.
+    # Sanitise any error/timeout placeholders before passing to the compiler.
+    # Raw placeholders cause the compiler to return 0 output tokens (model refusal).
     logger.info("[%s] STEP 4: Report Compiler (assembling 21-section memo)...", run_id)
     compile_context = (
         f"REPORT COMPILATION REQUEST\n"
@@ -1187,13 +1211,20 @@ async def _run_equity_pipeline(topic: str, run_id: str,
         + _quality_warning
         + f"Assemble the following analyst outputs into the final 21-section equity research memo "
         f"in the exact required output sequence. Do not add new analysis — compile only.\n\n"
-        f"--- FUNDAMENTAL ANALYSIS (SECTIONS 1-2: THESIS & MARKET) ---\n{fundamental_market_out}\n\n"
-        f"--- FUNDAMENTAL ANALYSIS (SECTIONS 9,11,12,13: FINANCIALS) ---\n{fundamental_financials_out}\n\n"
-        f"--- COMPETITIVE & STRATEGIC ANALYSIS ---\n{competitive_out}\n\n"
-        f"--- RISK & QUALITY ANALYSIS ---\n{risk_out}\n\n"
-        f"--- VALUATION & SCENARIOS ANALYSIS ---\n{valuation_out}\n\n"
-        f"--- EARNINGS QUALITY & ALPHA SIGNALS ---\n{earnings_out}\n\n"
-        f"--- QUANT DASHBOARD ---\n{quant_out}\n"
+        f"--- FUNDAMENTAL ANALYSIS (SECTIONS 1-2: THESIS & MARKET) ---\n"
+        f"{_clean_for_compiler('Fundamental Market', fundamental_market_out)}\n\n"
+        f"--- FUNDAMENTAL ANALYSIS (SECTIONS 9,11,12,13: FINANCIALS) ---\n"
+        f"{_clean_for_compiler('Fundamental Financials', fundamental_financials_out)}\n\n"
+        f"--- COMPETITIVE & STRATEGIC ANALYSIS ---\n"
+        f"{_clean_for_compiler('Competitive Analyst', competitive_out)}\n\n"
+        f"--- RISK & QUALITY ANALYSIS ---\n"
+        f"{_clean_for_compiler('Risk Analyst', risk_out)}\n\n"
+        f"--- VALUATION & SCENARIOS ANALYSIS ---\n"
+        f"{_clean_for_compiler('Valuation Analyst', valuation_out)}\n\n"
+        f"--- EARNINGS QUALITY & ALPHA SIGNALS ---\n"
+        f"{_clean_for_compiler('Earnings Quality', earnings_out)}\n\n"
+        f"--- QUANT DASHBOARD ---\n"
+        f"{_clean_for_compiler('Quant Modeler', quant_out)}\n"
     )
     compiled = await _run_agent(report_compiler, compile_context, "report-compiler",
                                  run_id, run_stats=run_stats)

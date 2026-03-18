@@ -98,9 +98,25 @@ def get_recent_filings(ticker: str, form_types: Optional[list] = None) -> dict:
 
     Returns:
         Dictionary with filing metadata including accession numbers and dates.
+
+    Note:
+        Results are capped per form type to prevent context bloat. Large-cap companies
+        like AAPL can have 300+ Form 4 insider filings in EDGAR's recent submissions
+        window. Without a cap, this section alone can exceed 200K input tokens.
     """
     if form_types is None:
         form_types = ["10-K", "10-Q", "DEF 14A", "8-K", "4"]
+
+    # Max filings to return per form type — keeps the section token-efficient.
+    # Agents care about recency, not exhaustive history; adjust in config if needed.
+    _PER_FORM_LIMIT: dict[str, int] = {
+        "10-K":    3,   # annual reports: last 3 years
+        "10-Q":    4,   # quarterly reports: last 4 quarters
+        "DEF 14A": 2,   # proxy statements: last 2
+        "8-K":    10,   # material events: last 10
+        "4":      15,   # insider transactions: last 15
+    }
+    _DEFAULT_LIMIT = 5  # fallback for any form type not listed above
 
     cik = _get_cik(ticker)
     url = f"{_EDGAR_SUBMISSIONS}/CIK{cik}.json"
@@ -113,23 +129,29 @@ def get_recent_filings(ticker: str, form_types: Optional[list] = None) -> dict:
     description_list = filings.get("primaryDocument", [])
 
     results = []
+    form_counts: dict[str, int] = {}
     for form, date, accession, doc in zip(form_list, date_list, accession_list, description_list):
-        if form in form_types:
-            accession_clean = accession.replace("-", "")
-            filing_url = (
-                f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/"
-                f"{accession_clean}/{doc}"
-            )
-            results.append({
-                "form": form,
-                "filing_date": date,
-                "accession_number": accession,
-                "primary_document_url": filing_url,
-                "viewer_url": (
-                    f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany"
-                    f"&CIK={cik}&type={urllib.parse.quote(form)}&dateb=&owner=include&count=10"
-                ),
-            })
+        if form not in form_types:
+            continue
+        limit = _PER_FORM_LIMIT.get(form, _DEFAULT_LIMIT)
+        if form_counts.get(form, 0) >= limit:
+            continue
+        form_counts[form] = form_counts.get(form, 0) + 1
+        accession_clean = accession.replace("-", "")
+        filing_url = (
+            f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/"
+            f"{accession_clean}/{doc}"
+        )
+        results.append({
+            "form": form,
+            "filing_date": date,
+            "accession_number": accession,
+            "primary_document_url": filing_url,
+            "viewer_url": (
+                f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany"
+                f"&CIK={cik}&type={urllib.parse.quote(form)}&dateb=&owner=include&count=10"
+            ),
+        })
 
     return {
         "ticker": ticker,
