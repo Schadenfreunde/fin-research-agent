@@ -975,9 +975,34 @@ async def _run_equity_pipeline(topic: str, run_id: str,
             run_stats.structured_data_duration_s = 120.0
             run_stats.structured_data_status = "timeout"
 
+    # ── Compact source summary — shared by Context Processor and Data Harvester ──
+    # Both agents need to know what structured data has been gathered, but neither
+    # needs the raw JSON values (~500K tokens for large-cap stocks like AAPL).
+    # Passing the full structured_data causes 0 output tokens and an error.
+    # This compact description is sufficient: it tells agents what's available
+    # so they can identify gaps and avoid re-calling APIs that already ran.
+    _harvester_sources_summary = (
+        "Pre-gathered structured data sources (DO NOT re-call any of these APIs):\n"
+        "  • Finnhub:       current quote, 2yr weekly OHLCV, financials, key metrics, "
+        "earnings history, analyst ratings\n"
+        "  • FMP:           income statement (5yr), balance sheet (5yr), cash flow (5yr), "
+        "key metrics, analyst estimates\n"
+        "  • Alpha Vantage: current price, company overview, income statement, EPS\n"
+        "  • Polygon:       ticker details (name/sector/SIC), historical OHLCV, recent news\n"
+        "  • SEC EDGAR:     recent filings, SBC, revenues, net income, LT debt, "
+        "insider transactions\n"
+        "  • NewsAPI:       recent news articles from WSJ, FT, Bloomberg, Reuters, Barron's "
+        "(last 30 days — premium financial outlets only)\n"
+        "  • OpenFIGI:      FIGI instrument mapping — security type, exchange, market sector\n"
+        "Total: ~22 pre-gathered structured data sources available to all analysts."
+    )
+
     # ── Step 1b: Context Processor — only runs if user provided context ──────────
     # Runs FIRST (before Data Harvester) so its Data Harvester Guidance section
     # can direct the harvester's searches toward gaps relevant to the user's focus.
+    # Uses the compact source summary (not full structured_data) — passing the full
+    # raw JSON payload (~500K tokens for large-cap stocks) causes 0 output tokens.
+    # The context processor identifies WHAT to research, not the raw values themselves.
     enriched_context_note = ""
     context_stripped = user_context.strip() if user_context else ""
     if context_stripped and context_stripped.lower() not in ("none", "n/a", ""):
@@ -986,10 +1011,10 @@ async def _run_equity_pipeline(topic: str, run_id: str,
             context_processor,
             (
                 f"USER CONTEXT:\n{user_context}\n\n"
-                f"STRUCTURED DATA ALREADY GATHERED:\n{structured_data}\n\n"
-                f"Company Name: {company_name}\n"
-                f"Ticker: {topic}\n"
+                f"Company Name: {company_name} | Ticker: {topic}\n"
                 f"Run ID: {run_id}\n\n"
+                f"STRUCTURED DATA ALREADY GATHERED (compact summary — full JSON available to analysts):\n"
+                f"{_harvester_sources_summary}\n\n"
                 f"Identify gaps relevant to the user context. Fetch missing data within "
                 f"your tool budget. Return the ENRICHED CONTEXT NOTE including a "
                 f"DATA HARVESTER GUIDANCE section with specific searches the Data Harvester "
@@ -1006,27 +1031,6 @@ async def _run_equity_pipeline(topic: str, run_id: str,
 
     # ── Step 1c: Data Harvester LLM — web search + Coverage Log only ─────────
     logger.info("[%s] STEP 1c: Data Harvester (web search + coverage log — ~5-10 min)...", run_id)
-    # Pass a compact source summary instead of the full ~50 K structured-data payload.
-    # The data-harvester only needs to know what was pre-gathered (to list in the
-    # Coverage Log) — it does NOT need the raw JSON to do web searches.  Sending the
-    # full structured data inflates data-harvester's input context by ~50 K chars,
-    # which significantly reduces the model's effective output budget for writing the
-    # Coverage Log table and validator.
-    _harvester_sources_summary = (
-        "Pre-gathered structured data sources (DO NOT re-call any of these APIs):\n"
-        "  • Finnhub:       current quote, 2yr weekly OHLCV, financials, key metrics, "
-        "earnings history, analyst ratings\n"
-        "  • FMP:           income statement (5yr), balance sheet (5yr), cash flow (5yr), "
-        "key metrics, analyst estimates\n"
-        "  • Alpha Vantage: current price, company overview, income statement, EPS\n"
-        "  • Polygon:       ticker details (name/sector/SIC), historical OHLCV, recent news\n"
-        "  • SEC EDGAR:     recent filings, SBC, revenues, net income, LT debt, "
-        "insider transactions\n"
-        "  • NewsAPI:       recent news articles from WSJ, FT, Bloomberg, Reuters, Barron's "
-        "(last 30 days — premium financial outlets only)\n"
-        "  • OpenFIGI:      FIGI instrument mapping — security type, exchange, market sector\n"
-        "Total: ~22 pre-gathered structured data sources available to all analysts."
-    )
     data_output = await _run_agent(
         data_harvester,
         (
