@@ -103,6 +103,8 @@ from tools.debug_report import (
     count_analyst_placeholders,
     generate_debug_report,
     save_debug_report,
+    format_cost_summary,
+    SEARCH_TOOL_NAMES,
     _is_placeholder,
 )
 
@@ -251,6 +253,15 @@ async def _run_agent(agent, message: str, label: str, run_id: str,
     rate_limit_count = 0
     attempt_count = 0
 
+    # ── Cost tracking (populated by _collect, read after each attempt) ────────
+    # _usage accumulates across ALL attempts (retries + timeouts) so the reported
+    # cost reflects total Vertex AI spend for this agent slot, not just the last run.
+    _agent_model = getattr(agent, "model", "") or ""
+    _usage: dict = {"input_tokens": 0, "output_tokens": 0, "search_calls": 0}
+    # Shared mutable container so the timeout handler can read the last
+    # usage_metadata even after _collect() is cancelled by asyncio.wait_for.
+    _last_meta: dict = {"meta": None}
+
     # Record agent start in RunStats (before retry loop)
     if run_stats is not None:
         record_agent_start(run_stats, label)
@@ -293,6 +304,23 @@ async def _run_agent(agent, message: str, label: str, run_id: str,
                 f" (retry {attempt})" if attempt > 0 else "",
             )
 
+            def _extract_usage(um) -> None:
+                """Accumulate token counts from a usage_metadata object into _usage.
+
+                Uses += so tokens from every attempt (including timed-out and
+                rate-limited retries) are summed into the total for this agent slot.
+                Each attempt uses a fresh Vertex AI session, so usage_metadata
+                always starts from 0 — safe to add without risk of double-counting.
+                """
+                if um is None:
+                    return
+                _usage["input_tokens"] += (
+                    getattr(um, "prompt_token_count", 0) or 0
+                )
+                _usage["output_tokens"] += (
+                    getattr(um, "candidates_token_count", 0) or 0
+                )
+
             async def _collect() -> str:
                 # Collect text from every model response event (not just is_final_response).
                 # Some agents (data-harvester, quant-equity) produce their text in
@@ -307,19 +335,35 @@ async def _run_agent(agent, message: str, label: str, run_id: str,
                 # always in the final event).  If the final event has no text, fall back to
                 # whatever was accumulated from earlier model turns.
                 intermediate_text: list[str] = []
+                # _last_usage_meta: tracks the most recent cumulative usage_metadata
+                # for this attempt. Also written into _last_meta["meta"] so the
+                # outer timeout handler can read it if this coroutine is cancelled.
+                _last_usage_meta = None
+                # Note: _usage is NOT reset here — tokens accumulate across all
+                # attempts so timed-out and rate-limited runs are counted too.
                 logger.info("[%s] %s: Connecting to Vertex AI...", run_id, label)
                 async for event in runner.run_async(
                     user_id="system",
                     session_id=session_id,
                     new_message=content,
                 ):
+                    # ── Token usage tracking ───────────────────────────────────────
+                    # Keep the most recent usage_metadata — it is cumulative in
+                    # Gemini streaming and represents the full run total.
+                    um = getattr(event, "usage_metadata", None)
+                    if um is not None:
+                        _last_usage_meta = um
+                        _last_meta["meta"] = um  # sync to outer scope for timeout handler
+
                     if hasattr(event, "content") and event.content and event.content.parts:
                         parts = event.content.parts
-                        # Log tool calls so the user knows the agent is active, not "stuck"
                         for part in parts:
                             fc = getattr(part, "function_call", None)
                             if fc:
                                 logger.debug("[%s] %s calling tool: %s", run_id, label, fc.name)
+                                # Count Vertex AI grounded search calls for cost tracking
+                                if fc.name in SEARCH_TOOL_NAMES:
+                                    _usage["search_calls"] += 1
 
                         # Accumulate text from model response events (skip pure tool
                         # responses which carry only function_response parts).
@@ -332,6 +376,7 @@ async def _run_agent(agent, message: str, label: str, run_id: str,
                                     intermediate_text.append(part.text)
 
                     if event.is_final_response():
+                        _extract_usage(_last_usage_meta)
                         # Prefer the final event's own text (normal case for all working agents).
                         if event.content and event.content.parts:
                             final_text_parts = [
@@ -348,8 +393,10 @@ async def _run_agent(agent, message: str, label: str, run_id: str,
                                 "[%s] %s: final event had no text — using %d intermediate chunk(s)",
                                 run_id, label, len(intermediate_text),
                             )
+                        _extract_usage(_last_usage_meta)
                         return "\n".join(filter(None, intermediate_text))
                 # Generator exhausted without a final response event
+                _extract_usage(_last_usage_meta)
                 return "\n".join(filter(None, intermediate_text))
 
             try:
@@ -363,25 +410,61 @@ async def _run_agent(agent, message: str, label: str, run_id: str,
                         f"[EMPTY RESPONSE: {label} returned no text content from the model. "
                         f"Output unavailable — pipeline continued with partial data.]"
                     )
-                logger.info("[%s] Completed: %s (%d chars)", run_id, label, len(result))
+                from tools.debug_report import cost_for_model as _cost_fn
+                _agent_cost = _cost_fn(
+                    _agent_model,
+                    _usage["input_tokens"],
+                    _usage["output_tokens"],
+                    _usage["search_calls"],
+                )
+                logger.info(
+                    "[%s] Completed: %s (%d chars | in:%d out:%d tok | %d searches | ~$%.4f)",
+                    run_id, label, len(result),
+                    _usage["input_tokens"], _usage["output_tokens"],
+                    _usage["search_calls"], _agent_cost,
+                )
                 if run_stats is not None:
-                    record_agent_complete(run_stats, label, result,
-                                          timeout_count, rate_limit_count, attempt_count)
+                    record_agent_complete(
+                        run_stats, label, result,
+                        timeout_count, rate_limit_count, attempt_count,
+                        model=_agent_model,
+                        input_tokens=_usage["input_tokens"],
+                        output_tokens=_usage["output_tokens"],
+                        search_calls=_usage["search_calls"],
+                    )
                 return result
 
             except asyncio.TimeoutError:
                 timeout_count += 1
+                # Capture whatever tokens were consumed before the timeout.
+                # _last_meta["meta"] is updated inside _collect() on every event,
+                # so it holds the last-seen usage_metadata even though _collect()
+                # was cancelled — giving us partial token counts for cost tracking.
+                _extract_usage(_last_meta["meta"])
+                from tools.debug_report import cost_for_model as _cost_fn
+                _agent_cost = _cost_fn(
+                    _agent_model,
+                    _usage["input_tokens"],
+                    _usage["output_tokens"],
+                    _usage["search_calls"],
+                )
                 logger.warning(
-                    "[%s] TIMEOUT: %s exceeded %ds (timeout #%d) — continuing pipeline.",
-                    run_id, label, timeout, timeout_count,
+                    "[%s] TIMEOUT: %s exceeded %ds (timeout #%d, ~$%.4f consumed so far) — continuing pipeline.",
+                    run_id, label, timeout, timeout_count, _agent_cost,
                 )
                 result = (
                     f"[AGENT TIMEOUT: {label} did not complete within {timeout}s. "
                     f"Output unavailable — pipeline continued.]"
                 )
                 if run_stats is not None:
-                    record_agent_complete(run_stats, label, result,
-                                          timeout_count, rate_limit_count, attempt_count)
+                    record_agent_complete(
+                        run_stats, label, result,
+                        timeout_count, rate_limit_count, attempt_count,
+                        model=_agent_model,
+                        input_tokens=_usage["input_tokens"],
+                        output_tokens=_usage["output_tokens"],
+                        search_calls=_usage["search_calls"],
+                    )
                 return result
 
             except Exception as e:
@@ -1182,7 +1265,8 @@ async def _run_equity_pipeline(topic: str, run_id: str,
     )
 
     # ── Assemble final report ──────────────────────────────────────────────────
-    return f"{exec_summary}\n\n---\n\n{compiled}{review_notes_text}"
+    cost_section = format_cost_summary(run_stats) if run_stats is not None else ""
+    return f"{exec_summary}\n\n---\n\n{compiled}{review_notes_text}{cost_section}"
 
 
 # ── Macro pipeline ─────────────────────────────────────────────────────────────
@@ -1435,7 +1519,8 @@ async def _run_macro_pipeline(topic: str, run_id: str,
             f"This report has not been fully fact-checked or reviewed.*\n"
         )
 
-    return f"{compiled}{review_notes_text}"
+    cost_section = format_cost_summary(run_stats) if run_stats is not None else ""
+    return f"{compiled}{review_notes_text}{cost_section}"
 
 
 # ── Top-level pipeline runner ──────────────────────────────────────────────────
