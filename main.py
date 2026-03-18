@@ -50,14 +50,16 @@ with open(_CONFIG_PATH) as f:
 import vertexai
 _PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT") or CONFIG["google_cloud"]["project_id"]
 _REGION = CONFIG["google_cloud"]["region"]
+_MODEL_REGION = CONFIG["google_cloud"].get("model_region", "global")
 _BUCKET = os.environ.get("REPORTS_BUCKET") or CONFIG["google_cloud"]["reports_bucket"]
-vertexai.init(project=_PROJECT_ID, location=_REGION)
+vertexai.init(project=_PROJECT_ID, location=_MODEL_REGION)
 
 # Tell google-genai SDK (used internally by google-adk) to use Vertex AI,
 # not the Gemini Developer API. Without these, the ADK looks for a GOOGLE_API_KEY
 # and fails — Vertex AI uses service account auth instead.
+# model_region must be "global" for Gemini 3.x models.
 os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "1"
-os.environ.setdefault("GOOGLE_CLOUD_LOCATION", _REGION)
+os.environ.setdefault("GOOGLE_CLOUD_LOCATION", _MODEL_REGION)
 
 # ── Initialize FastAPI ─────────────────────────────────────────────────────────
 
