@@ -280,6 +280,10 @@ valuation_analyst = Agent(
         "Uses Gemini 2.5 Pro for complex DCF and probability-weighted scenario modeling."
     ),
     instruction=_load_prompt("valuation_analyst.md"),
+    # DCF models + scenario tables + scorecard can exceed 8K output tokens.
+    generate_content_config=genai_types.GenerateContentConfig(
+        max_output_tokens=32768,
+    ),
     tools=[
         _tool(get_quote_finnhub),
         _tool(get_financials_finnhub),
@@ -301,6 +305,10 @@ quant_modeler_equity = Agent(
         "Outputs feed Sections 18, 20, and 21."
     ),
     instruction=_load_prompt("quant_modeler_equity.md"),
+    # Quant dashboard regularly generates 25K+ output tokens (3× ADK default).
+    generate_content_config=genai_types.GenerateContentConfig(
+        max_output_tokens=65536,
+    ),
     tools=[
         _tool(get_historical_prices_finnhub),
         _tool(get_earnings_finnhub),
@@ -398,6 +406,10 @@ macro_analyst = Agent(
         "and literature review. Geography-aware: uses topic-specific indicators, not US defaults."
     ),
     instruction=_load_prompt("macro_analyst.md"),
+    # Full 8-section macro report can exceed 15K output tokens.
+    generate_content_config=genai_types.GenerateContentConfig(
+        max_output_tokens=65536,
+    ),
     tools=[
         _tool(get_series),
         _tool(get_multiple_series),
@@ -419,6 +431,10 @@ quant_modeler_macro = Agent(
         "claims in cited sources."
     ),
     instruction=_load_prompt("quant_modeler_macro.md"),
+    # Econometric models + source credibility output can exceed 8K tokens.
+    generate_content_config=genai_types.GenerateContentConfig(
+        max_output_tokens=32768,
+    ),
     tools=[
         _tool(get_series),
         _tool(get_multiple_series),

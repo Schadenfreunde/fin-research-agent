@@ -1516,6 +1516,7 @@ async def _run_macro_pipeline(topic: str, run_id: str,
     )
 
     # ── Step 4: Macro Report Compiler ─────────────────────────────────────────
+    # Sanitise placeholders before passing — raw [ERROR:] strings cause 0 output tokens.
     compile_context = (
         f"MACRO REPORT COMPILATION REQUEST\n"
         f"Topic: {topic}\n"
@@ -1524,9 +1525,12 @@ async def _run_macro_pipeline(topic: str, run_id: str,
         f"(Sections 1–7 + Section 8 Literature Review). "
         f"Merge the quant findings into the appropriate sections (2, 4, 5, 6). "
         f"Paste Section 8 (Literature Review) verbatim from the Macro Analyst output.\n\n"
-        f"--- MACRO ANALYST OUTPUT ---\n{analysis_out}\n\n"
-        f"--- QUANT MODELER OUTPUT ---\n{quant_out}\n\n"
-        f"--- MACRO SOURCE VALIDATOR OUTPUT (for Source Log) ---\n{source_validator_out}\n"
+        f"--- MACRO ANALYST OUTPUT ---\n"
+        f"{_clean_for_compiler('Macro Analyst', analysis_out)}\n\n"
+        f"--- QUANT MODELER OUTPUT ---\n"
+        f"{_clean_for_compiler('Quant Modeler', quant_out)}\n\n"
+        f"--- MACRO SOURCE VALIDATOR OUTPUT (for Source Log) ---\n"
+        f"{_clean_for_compiler('Source Validator', source_validator_out)}\n"
     )
     logger.info("[%s] STEP 4: Macro Report Compiler (assembling 8-section report)...", run_id)
     compiled = await _run_agent(
@@ -1536,62 +1540,71 @@ async def _run_macro_pipeline(topic: str, run_id: str,
     # ── Step 5: Review loop ────────────────────────────────────────────────────
     review_notes_text = ""
     try:
-        for pass_num in range(1, _MAX_REVIEW_PASSES + 1):
-            # Phase 2E: run fact checker and review agent in parallel — they are independent
-            logger.info("[%s] STEP 5: Review pass %d/%d — fact-checker + review-agent running in parallel...",
-                        run_id, pass_num, _MAX_REVIEW_PASSES)
-            _macro_review_msg = f"Review the following macro research report on '{topic}':\n\n{compiled}"
-            fact_result, review_result = await asyncio.gather(
-                _run_agent(fact_checker,  _macro_review_msg, f"fact-checker-pass-{pass_num}",  run_id, run_stats=run_stats),
-                _run_agent(review_agent,  _macro_review_msg, f"review-agent-pass-{pass_num}",  run_id, run_stats=run_stats),
+        if _is_placeholder(compiled):
+            logger.warning("[%s] macro compiled report is empty/placeholder — skipping review loop", run_id)
+            review_notes_text = (
+                f"\n\n---\n\n## Review Notes\n\n"
+                f"*The review loop was skipped because the compiled report was empty or "
+                f"contained only placeholder content (the macro report-compiler did not "
+                f"return usable output). Check the debug report for which agents failed.*\n"
             )
-
-            fact_passed = "PASS" in fact_result.upper()
-            review_passed = "PASS" in review_result.upper()
-
-            if fact_passed and review_passed:
-                logger.info("[%s] STEP 5: Review pass %d/%d PASSED ✓ — report complete",
+        else:
+            for pass_num in range(1, _MAX_REVIEW_PASSES + 1):
+                # Phase 2E: run fact checker and review agent in parallel — they are independent
+                logger.info("[%s] STEP 5: Review pass %d/%d — fact-checker + review-agent running in parallel...",
                             run_id, pass_num, _MAX_REVIEW_PASSES)
-                break
+                _macro_review_msg = f"Review the following macro research report on '{topic}':\n\n{compiled}"
+                fact_result, review_result = await asyncio.gather(
+                    _run_agent(fact_checker,  _macro_review_msg, f"fact-checker-pass-{pass_num}",  run_id, run_stats=run_stats),
+                    _run_agent(review_agent,  _macro_review_msg, f"review-agent-pass-{pass_num}",  run_id, run_stats=run_stats),
+                )
 
-            logger.info("[%s] STEP 5: Review pass %d/%d verdict — fact-checker: %s | review-agent: %s — re-compiling...",
-                        run_id, pass_num, _MAX_REVIEW_PASSES,
-                        "PASS" if fact_passed else "FAIL",
-                        "PASS" if review_passed else "FAIL")
-            if pass_num < _MAX_REVIEW_PASSES:
-                revise_context = (
-                    f"REVISION REQUEST — Pass {pass_num}\n"
-                    f"Topic: {topic}\n\n"
-                    f"FACT CHECKER FEEDBACK:\n{fact_result}\n\n"
-                    f"REVIEW AGENT FEEDBACK:\n{review_result}\n\n"
-                    f"CURRENT REPORT:\n{compiled}\n\n"
-                    f"NOTE: The report must retain all 8 sections including Section 8 "
-                    f"(Literature Review). If Section 8 is missing from the current report, "
-                    f"restore it verbatim from the original analyst output below:\n"
-                    f"--- ORIGINAL MACRO ANALYST SECTION 8 (Literature Review) ---\n"
-                    f"{analysis_out[-8000:] if len(analysis_out) > 8000 else analysis_out}"
-                )
-                new_compiled = await _run_agent(
-                    macro_report_compiler, revise_context,
-                    f"macro-compiler-pass-{pass_num}", run_id, run_stats=run_stats,
-                )
-                # Guard against tiny revision output replacing a good report
-                if _is_placeholder(new_compiled) or len(new_compiled) < 1_000:
-                    logger.warning(
-                        "[%s] Macro pass %d: compiler returned tiny output (%d chars) — keeping previous (%d chars)",
-                        run_id, pass_num, len(new_compiled), len(compiled),
-                    )
+                fact_passed = "PASS" in fact_result.upper()
+                review_passed = "PASS" in review_result.upper()
+
+                if fact_passed and review_passed:
+                    logger.info("[%s] STEP 5: Review pass %d/%d PASSED ✓ — report complete",
+                                run_id, pass_num, _MAX_REVIEW_PASSES)
                     break
-                compiled = new_compiled
-            else:
-                logger.info("[%s] STEP 5: Max review passes (%d) reached — appending Review Notes", run_id, _MAX_REVIEW_PASSES)
-                review_notes_text = (
-                    f"\n\n---\n\n## Review Notes\n\n"
-                    f"*This report reached the maximum number of review passes ({_MAX_REVIEW_PASSES}). "
-                    f"The following issues were flagged but not fully resolved:*\n\n"
-                    f"**Fact Checker (Pass {pass_num}):**\n{fact_result}\n\n"
-                    f"**Review Agent (Pass {pass_num}):**\n{review_result}\n"
-                )
+
+                logger.info("[%s] STEP 5: Review pass %d/%d verdict — fact-checker: %s | review-agent: %s — re-compiling...",
+                            run_id, pass_num, _MAX_REVIEW_PASSES,
+                            "PASS" if fact_passed else "FAIL",
+                            "PASS" if review_passed else "FAIL")
+                if pass_num < _MAX_REVIEW_PASSES:
+                    revise_context = (
+                        f"REVISION REQUEST — Pass {pass_num}\n"
+                        f"Topic: {topic}\n\n"
+                        f"FACT CHECKER FEEDBACK:\n{fact_result}\n\n"
+                        f"REVIEW AGENT FEEDBACK:\n{review_result}\n\n"
+                        f"CURRENT REPORT:\n{compiled}\n\n"
+                        f"NOTE: The report must retain all 8 sections including Section 8 "
+                        f"(Literature Review). If Section 8 is missing from the current report, "
+                        f"restore it verbatim from the original analyst output below:\n"
+                        f"--- ORIGINAL MACRO ANALYST SECTION 8 (Literature Review) ---\n"
+                        f"{analysis_out[-8000:] if len(analysis_out) > 8000 else analysis_out}"
+                    )
+                    new_compiled = await _run_agent(
+                        macro_report_compiler, revise_context,
+                        f"macro-compiler-pass-{pass_num}", run_id, run_stats=run_stats,
+                    )
+                    # Guard against tiny revision output replacing a good report
+                    if _is_placeholder(new_compiled) or len(new_compiled) < 1_000:
+                        logger.warning(
+                            "[%s] Macro pass %d: compiler returned tiny output (%d chars) — keeping previous (%d chars)",
+                            run_id, pass_num, len(new_compiled), len(compiled),
+                        )
+                        break
+                    compiled = new_compiled
+                else:
+                    logger.info("[%s] STEP 5: Max review passes (%d) reached — appending Review Notes", run_id, _MAX_REVIEW_PASSES)
+                    review_notes_text = (
+                        f"\n\n---\n\n## Review Notes\n\n"
+                        f"*This report reached the maximum number of review passes ({_MAX_REVIEW_PASSES}). "
+                        f"The following issues were flagged but not fully resolved:*\n\n"
+                        f"**Fact Checker (Pass {pass_num}):**\n{fact_result}\n\n"
+                        f"**Review Agent (Pass {pass_num}):**\n{review_result}\n"
+                    )
     except Exception as review_err:
         logger.error("[%s] Macro review loop error: %s — using unreviewed report", run_id, review_err)
         review_notes_text = (
