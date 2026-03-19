@@ -1687,12 +1687,17 @@ async def run_research_pipeline(topic: str, report_type: str, run_id: str,
         else:
             _yaml_title = topic.replace("-", " ").title() + " — Macro Research Report"
 
-        # Build the YAML block as a list of lines (avoids f-string issues
-        # with LaTeX braces, e.g. \usepackage{booktabs} would need {{}} in
-        # an f-string but is written literally here).
+        # Build the YAML front-matter block.
+        # header-includes must be a YAML list, not a literal block scalar (|).
+        # Pandoc 3.x (Debian Bookworm) switched to HsYAML which is YAML-1.2
+        # strict and rejects the block-scalar form with a "parse exception at
+        # line 1, column 1" error.  Single-quoted YAML strings are used for
+        # the LaTeX commands so that backslashes are treated as literals (YAML
+        # double-quoted strings would interpret \t, \f, \r, \u, etc.).
+        _yaml_title_escaped = _yaml_title.replace('"', '\\"')
         _yaml_lines = [
             "---",
-            f'title: "{_yaml_title}"',
+            f'title: "{_yaml_title_escaped}"',
             f'date: "{_yaml_date}"',
             'geometry: "margin=1in, top=1.5in, bottom=1.2in"',
             'fontsize: "11pt"',
@@ -1702,19 +1707,19 @@ async def run_research_pipeline(topic: str, report_type: str, run_id: str,
             'colorlinks: true',
             'linkcolor: "blue"',
             'urlcolor: "blue"',
-            'header-includes: |',
-            '  \\usepackage{booktabs}',
-            '  \\usepackage{longtable}',
-            '  \\usepackage{array}',
-            '  \\usepackage{float}',
-            '  \\floatplacement{figure}{H}',
-            '  \\floatplacement{table}{H}',
-            '  \\usepackage{fancyhdr}',
-            '  \\pagestyle{fancy}',
-            '  \\fancyhf{}',
-            '  \\fancyhead[L]{\\small AI Research Pipeline}',
-            '  \\fancyhead[R]{\\small \\thepage}',
-            '  \\renewcommand{\\headrulewidth}{0.4pt}',
+            'header-includes:',
+            r"  - '\usepackage{booktabs}'",
+            r"  - '\usepackage{longtable}'",
+            r"  - '\usepackage{array}'",
+            r"  - '\usepackage{float}'",
+            r"  - '\floatplacement{figure}{H}'",
+            r"  - '\floatplacement{table}{H}'",
+            r"  - '\usepackage{fancyhdr}'",
+            r"  - '\pagestyle{fancy}'",
+            r"  - '\fancyhf{}'",
+            r"  - '\fancyhead[L]{\small AI Research Pipeline}'",
+            r"  - '\fancyhead[R]{\small \thepage}'",
+            r"  - '\renewcommand{\headrulewidth}{0.4pt}'",
             "---",
             "",
         ]
