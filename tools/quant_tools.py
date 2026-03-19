@@ -16,7 +16,7 @@ from typing import Optional
 
 # ── Technical Indicators ───────────────────────────────────────────────────────
 
-def compute_rsi(prices: list, period: int = 14) -> Optional[float]:
+def compute_rsi(prices: list[float], period: int = 14) -> Optional[float]:
     """
     Compute the Relative Strength Index (RSI).
 
@@ -59,7 +59,7 @@ def compute_rsi(prices: list, period: int = 14) -> Optional[float]:
     return round(rsi, 2)
 
 
-def compute_sma(prices: list, period: int) -> Optional[float]:
+def compute_sma(prices: list[float], period: int) -> Optional[float]:
     """
     Compute Simple Moving Average (SMA).
 
@@ -75,7 +75,7 @@ def compute_sma(prices: list, period: int) -> Optional[float]:
     return round(sum(prices[-period:]) / period, 4)
 
 
-def compute_ema(prices: list, period: int) -> Optional[float]:
+def compute_ema(prices: list[float], period: int) -> Optional[float]:
     """
     Compute Exponential Moving Average (EMA).
 
@@ -98,7 +98,7 @@ def compute_ema(prices: list, period: int) -> Optional[float]:
     return round(ema, 4)
 
 
-def compute_macd(prices: list, fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
+def compute_macd(prices: list[float], fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
     """
     Compute MACD (Moving Average Convergence Divergence).
 
@@ -160,7 +160,7 @@ def compute_macd(prices: list, fast: int = 12, slow: int = 26, signal: int = 9) 
     }
 
 
-def compute_bollinger_bands(prices: list, period: int = 20, num_std: float = 2.0) -> dict:
+def compute_bollinger_bands(prices: list[float], period: int = 20, num_std: float = 2.0) -> dict:
     """
     Compute Bollinger Bands.
 
@@ -206,7 +206,7 @@ def compute_bollinger_bands(prices: list, period: int = 20, num_std: float = 2.0
     }
 
 
-def compute_atr(highs: list, lows: list, closes: list, period: int = 14) -> Optional[float]:
+def compute_atr(highs: list[float], lows: list[float], closes: list[float], period: int = 14) -> Optional[float]:
     """
     Compute Average True Range (ATR) — a volatility measure.
 
@@ -239,7 +239,7 @@ def compute_atr(highs: list, lows: list, closes: list, period: int = 14) -> Opti
 
 # ── Volatility & Risk ──────────────────────────────────────────────────────────
 
-def compute_historical_volatility(prices: list, annualize: bool = True) -> Optional[float]:
+def compute_historical_volatility(prices: list[float], annualize: bool = True) -> Optional[float]:
     """
     Compute historical (realized) volatility from daily returns.
 
@@ -271,7 +271,7 @@ def compute_historical_volatility(prices: list, annualize: bool = True) -> Optio
     return round(daily_vol, 6)
 
 
-def compute_max_drawdown(prices: list) -> dict:
+def compute_max_drawdown(prices: list[float]) -> dict:
     """
     Compute maximum drawdown: the largest peak-to-trough decline.
 
@@ -306,7 +306,7 @@ def compute_max_drawdown(prices: list) -> dict:
     }
 
 
-def compute_var(returns: list, confidence: float = 0.95) -> Optional[float]:
+def compute_var(returns: list[float], confidence: float = 0.95) -> Optional[float]:
     """
     Compute Value at Risk (VaR) using the historical simulation method.
 
@@ -327,7 +327,7 @@ def compute_var(returns: list, confidence: float = 0.95) -> Optional[float]:
 
 # ── Statistical Models ─────────────────────────────────────────────────────────
 
-def compute_beta(asset_returns: list, benchmark_returns: list) -> dict:
+def compute_beta(asset_returns: list[float], benchmark_returns: list[float]) -> dict:
     """
     Compute beta using Ordinary Least Squares (OLS) regression.
 
@@ -381,7 +381,7 @@ def compute_beta(asset_returns: list, benchmark_returns: list) -> dict:
     }
 
 
-def compute_correlation(series_a: list, series_b: list) -> dict:
+def compute_correlation(series_a: list[float], series_b: list[float]) -> dict:
     """
     Compute Pearson correlation coefficient between two return series.
 
@@ -422,7 +422,7 @@ def compute_correlation(series_a: list, series_b: list) -> dict:
     }
 
 
-def compute_skewness_kurtosis(returns: list) -> dict:
+def compute_skewness_kurtosis(returns: list[float]) -> dict:
     """
     Compute skewness and excess kurtosis of return distribution.
     Used to assess if returns are normally distributed.
@@ -469,7 +469,7 @@ def compute_skewness_kurtosis(returns: list) -> dict:
 
 # ── Econometric Tools (for Macro Quant Modeler) ────────────────────────────────
 
-def simple_linear_regression(x: list, y: list, x_label: str = "X", y_label: str = "Y") -> dict:
+def simple_linear_regression(x: list[float], y: list[float], x_label: str = "X", y_label: str = "Y") -> dict:
     """
     Run a simple OLS linear regression: Y = alpha + beta * X + error
 
@@ -577,7 +577,7 @@ def compute_yield_spread(short_rate: float, long_rate: float) -> dict:
     }
 
 
-def compute_z_score(current_value: float, historical_values: list) -> dict:
+def compute_z_score(current_value: float, historical_values: list[float]) -> dict:
     """
     Compute the z-score of a current value vs its historical distribution.
     Used to assess how extreme a reading is relative to history.

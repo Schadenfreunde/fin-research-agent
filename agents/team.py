@@ -306,8 +306,10 @@ quant_modeler_equity = Agent(
     ),
     instruction=_load_prompt("quant_modeler_equity.md"),
     # Quant dashboard regularly generates 25K+ output tokens (3× ADK default).
+    # 32768 is the safe ceiling for Gemini 3 Flash Preview (preview models may
+    # reject values higher than their actual output token limit with INVALID_ARGUMENT).
     generate_content_config=genai_types.GenerateContentConfig(
-        max_output_tokens=65536,
+        max_output_tokens=32768,
     ),
     tools=[
         _tool(get_historical_prices_finnhub),
@@ -407,8 +409,9 @@ macro_analyst = Agent(
     ),
     instruction=_load_prompt("macro_analyst.md"),
     # Full 8-section macro report can exceed 15K output tokens.
+    # 32768 is the safe ceiling for Gemini 3 Flash Preview.
     generate_content_config=genai_types.GenerateContentConfig(
-        max_output_tokens=65536,
+        max_output_tokens=32768,
     ),
     tools=[
         _tool(get_series),

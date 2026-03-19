@@ -45,10 +45,15 @@ def _get_project_id() -> str:
 
 
 def _get_client() -> genai.Client:
-    """Create a google-genai client configured for Vertex AI."""
+    """Create a google-genai client configured for Vertex AI.
+
+    Always uses us-central1 for the search model (gemini-2.5-flash), which is
+    a regional model and is not available on the global endpoint used for Gemini 3.x.
+    GOOGLE_CLOUD_LOCATION may be set to "global" for Gemini 3 ADK agents but must
+    NOT be used here.
+    """
     project_id = _get_project_id()
-    location = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
-    return genai.Client(vertexai=True, project=project_id, location=location)
+    return genai.Client(vertexai=True, project=project_id, location="us-central1")
 
 
 # Max retries for 429 RESOURCE_EXHAUSTED errors in search_web.
@@ -292,7 +297,7 @@ def search_academic_papers(topic: str) -> dict:
     return search_web(query, num_results=8)
 
 
-def search_competitor_filings(company_name: str, competitors: list) -> dict:
+def search_competitor_filings(company_name: str, competitors: list[str]) -> dict:
     """
     Search for competitor annual reports, earnings calls, and investor presentations.
 
