@@ -473,6 +473,11 @@ async def _run_agent(agent, message: str, label: str, run_id: str,
                 err_str = str(e)
                 is_rate_limit = "429" in err_str or "RESOURCE_EXHAUSTED" in err_str
                 is_http_error = "HTTP Error" in err_str or "HTTPError" in err_str
+                # INVALID_ARGUMENT (400) from the Vertex AI model API is typically
+                # transient when 6 agents start simultaneously (race/connection issue).
+                # Pattern: different agents fail with "model —, 0 tokens" each run.
+                # Retry once with backoff — the request succeeds on the second attempt.
+                is_invalid_argument = "INVALID_ARGUMENT" in err_str
 
                 if is_rate_limit and attempt < _MAX_RATE_LIMIT_RETRIES - 1:
                     last_exception = e
@@ -482,6 +487,15 @@ async def _run_agent(agent, message: str, label: str, run_id: str,
                         run_id, label, attempt + 1, _MAX_RATE_LIMIT_RETRIES,
                     )
                     # Semaphore released here (exit 'async with'), then loop retries
+                    continue
+
+                if is_invalid_argument and attempt < _MAX_RATE_LIMIT_RETRIES - 1:
+                    last_exception = e
+                    rate_limit_count += 1
+                    logger.warning(
+                        "[%s] INVALID_ARGUMENT (400) on %s (attempt %d/%d) — likely transient, will retry",
+                        run_id, label, attempt + 1, _MAX_RATE_LIMIT_RETRIES,
+                    )
                     continue
 
                 if is_http_error:
