@@ -14,24 +14,31 @@
 # ------------------------------------------------------------
 models:
   # Tier 1 — Highest reasoning (Orchestrator, Fact Checker, Review Agent)
-  tier1: "gemini-2.5-flash"
+  tier1: "gemini-3.1-pro-preview"
 
-  # Tier 2 — Strong analytical reasoning (Valuation, Earnings Quality)
-  tier2: "gemini-2.5-flash"
+  # Tier 2 — Strong analytical reasoning (Valuation)
+  tier2: "gemini-3-flash-preview"
 
-  # Tier 3 — Fast structured work (all other agents)
-  tier3: "gemini-2.5-flash"
+  # Tier 3 — Fast structured work (all other analysts, data agents, quant)
+  tier3: "gemini-3-flash-preview"
+
+  # Compiler tier — document assembly (long-output reliability)
+  tier_compiler: "gemini-3.1-pro-preview"
 
 # ------------------------------------------------------------
 # GOOGLE CLOUD SETTINGS
 # Fill these in with your Google Cloud project details.
 # ------------------------------------------------------------
 google_cloud:
-  project_id: "YOUR_GCP_PROJECT_ID"             # e.g., "my-research-agent-123"
-  region: "us-central1"                        # Cloud Run deployment region
-  reports_bucket: "YOUR_GCS_BUCKET"            # Cloud Storage bucket for saving reports
-  service_name: "fin-research-agent"           # Cloud Run service name (used by deploy.sh)
-  sec_user_agent: "FinResearchAgent your-email@example.com"  # SEC EDGAR requires an email in the User-Agent header
+  project_id: "YOUR_GCP_PROJECT_ID"             # e.g., "my-research-agent-123456"
+  region: "us-central1"                         # Cloud Run deployment region
+  model_region: "global"                        # Vertex AI model API location
+                                                # IMPORTANT: "global" is required for
+                                                # Gemini 3.x models. Do not change to
+                                                # "us-central1" or model calls will 404.
+  reports_bucket: "YOUR_GCS_BUCKET"             # Cloud Storage bucket for saving reports
+  service_name: "fin-research-agent"            # Cloud Run service name (used by deploy.sh)
+  sec_user_agent: "FinResearchAgent your-email@example.com"  # SEC EDGAR requires an email
 
 # ------------------------------------------------------------
 # API KEYS — stored as Secret Manager references
@@ -39,12 +46,16 @@ google_cloud:
 # and reference the secret name below.
 # ------------------------------------------------------------
 secrets:
-  alpha_vantage_key: "alpha-vantage-api-key"  # Secret name in Secret Manager
-  fred_api_key:      "fred-api-key"           # Secret name in Secret Manager
-  finnhub_api_key:   "finnhub-api-key"        # Register free at finnhub.io
-  fmp_api_key:       "fmp-api-key"            # Register free at financialmodelingprep.com
-  core_api_key:      "core-api-key"           # Register free at core.ac.uk/api-keys
-  semantic_scholar_api_key: "semantics-scholar-api-key"  # semanticscholar.org/product/api (optional — API works without key)
+  alpha_vantage_key: "alpha-vantage-api-key"   # Register free at alphavantage.co
+  fred_api_key:      "fred-api-key"            # Register free at fred.stlouisfed.org/docs/api/
+  finnhub_api_key:   "finnhub-api-key"         # Register free at finnhub.io
+  fmp_api_key:       "fmp-api-key"             # Register free at financialmodelingprep.com
+  core_api_key:      "core-api-key"            # Register free at core.ac.uk/api-keys
+  semantic_scholar_api_key: "semantics-scholar-api-key"  # semanticscholar.org/product/api (optional)
+  polygon_api_key:   "polygon-api-key"         # Register free at polygon.io
+  news_api_key:      "news-api-key"            # newsapi.org — 100 req/day free; real-time requires paid
+  openfigi_api_key:  "open-figi-api-key"       # openfigi.com — free; key raises rate limit
+  # Note: World Bank and OECD APIs are fully open — no API keys required
 
 # ------------------------------------------------------------
 # SCHEDULED ANALYSIS
@@ -102,18 +113,26 @@ report:
 # Hard wall-clock limit per LLM agent call. On timeout, the
 # pipeline continues with a placeholder — no structured data
 # is lost (Python gathered it before the LLM call started).
+#
+# With Python-first data gathering, the data_harvester LLM
+# only does web search (~10-15 tool calls), so 12 min is now
+# generous rather than a race against the clock.
 # ------------------------------------------------------------
 timeouts:
-  data_harvester: 720        # 12 min — extended for CORE academic API calls
-  macro_data_agent: 720      # 12 min
-  earnings_quality: 300      # 5 min
-  competitive_analyst: 360   # 6 min
-  fundamental_analyst: 600   # 10 min
-  risk_analyst: 600          # 10 min
-  valuation_analyst: 600     # 10 min
-  quant_modeler_equity: 360  # 6 min
-  macro_analyst: 360         # 6 min
-  default: 600               # 10 min
+  data_harvester: 720                  # 12 min — web search + coverage log
+  macro_data_agent: 540                # 9 min — capped below Vertex AI session limit; tool budget enforced in prompt
+  earnings_quality: 540                # 9 min
+  competitive_analyst: 720             # 12 min
+  fundamental_analyst: 720             # 12 min — legacy fallback only
+  fundamental_analyst_market: 480      # 8 min — thesis + market sections; raised after search queue contention observed
+  fundamental_analyst_financials: 720  # 12 min — financials sections; API-heavy
+  risk_analyst: 720                    # 12 min
+  valuation_analyst: 720               # 12 min
+  quant_modeler_equity: 480            # 8 min
+  quant_modeler_macro: 540             # 9 min — capped below Vertex AI session limit (~656s); 499 CANCELLED if exceeded
+  macro_analyst: 480                   # 8 min
+  context_processor: 300              # 5 min
+  default: 720                         # 12 min
 
 # ------------------------------------------------------------
 # CONCURRENCY SETTINGS (Vertex AI quota management)
@@ -122,7 +141,84 @@ timeouts:
 concurrency:
   # Max simultaneous Vertex AI API calls.
   # Set to 1 for Free trial GCP to avoid 429 quota limits (sequential).
-  max_parallel_agents: 1
+  # Pay-as-you-go: 3 allows the 6 analyst agents to run in two batches of 3,
+  # keeping the full equity pipeline well within the 1-hour Cloud Run limit.
+  max_parallel_agents: 3
 
-  # How many times to retry an agent that gets a 429 rate-limit error.
-  max_rate_limit_retries: 10
+  # How many times to retry an agent that gets a 429 rate-limit or transient
+  # INVALID_ARGUMENT (400) error. Increased for limited-quota accounts.
+  max_rate_limit_retries: 15
+
+# ------------------------------------------------------------
+# RETRY SETTINGS (pipeline-level retries for failed agents)
+# These are separate from the per-call rate-limit retries above.
+# ------------------------------------------------------------
+retry:
+  # How many retry rounds for equity analysts that return placeholder output.
+  # After Step 2's parallel gather, any failed analyst is re-run (in parallel).
+  # Set to 0 to disable analyst retries.
+  max_analyst_retries: 3
+
+  # How many times to retry the executive summary orchestrator (Step 6).
+  # If all attempts fail, the report is sent without an executive summary.
+  max_exec_summary_retries: 3
+
+# ------------------------------------------------------------
+# DEBUG REPORT SETTINGS
+# A debug report is saved to gs://{bucket}/debug/{run_id}.md
+# after every run. It shows per-agent status, timeout counts,
+# rate-limit retries, and auto-generated recommendations.
+# ------------------------------------------------------------
+debug:
+  save_debug_report: true   # Set to false to disable (not recommended)
+  debug_prefix: "debug"     # GCS path prefix for debug reports
+
+# ------------------------------------------------------------
+# WEB SEARCH THROTTLE
+# Minimum seconds between successive Vertex AI web search calls.
+# Free tier (~5 QPM for Gemini Flash): keep at 10.0
+# Paid account (60+ QPM): 2.0 is safe and reduces total latency
+# during the 6-analyst parallel phase.
+# ------------------------------------------------------------
+search:
+  min_interval_seconds: 2.0
+
+# ------------------------------------------------------------
+# COST ESTIMATION PRICING
+# Used to calculate per-agent and total run cost shown at the
+# bottom of every report and in debug reports.
+#
+# Prices are USD per 1,000,000 tokens (input / output separately).
+# Update these whenever you add a new model or prices change.
+# Models are matched by substring — "gemini-2.5-flash-001" will
+# match the "gemini-2.5-flash" entry automatically.
+#
+# Search cost: Vertex AI Grounding with Google Search
+# = $35 per 1,000 queries = $0.035 per call (as of 2025).
+# ------------------------------------------------------------
+pricing:
+  search_cost_per_call: 0.035   # USD per Vertex AI grounded search invocation
+
+  # USD per 1M tokens — input (prompt) / output (completion)
+  # Source: https://cloud.google.com/vertex-ai/generative-ai/pricing
+  models:
+    # Gemini 3.x models
+    gemini-3.1-pro-preview:   {input:  2.00, output: 12.00}
+    gemini-3-pro-preview:     {input:  2.00, output: 12.00}
+    gemini-3-flash-preview:   {input:  0.50, output:  3.00}
+    gemini-3.1-flash-preview: {input:  0.50, output:  3.00}
+    gemini-3.1-flash-lite:    {input:  0.25, output:  1.50}
+
+    # Gemini 2.5 models
+    gemini-2.5-pro:    {input:  1.25, output: 10.00}
+    gemini-2.5-flash:  {input:  0.30, output:  2.50}
+
+    # Gemini 2.0 / 1.5 legacy
+    gemini-2.0-flash:  {input:  0.10, output:  0.40}
+    gemini-1.5-pro:    {input:  1.25, output:  5.00}
+    gemini-1.5-flash:  {input: 0.075, output:  0.30}
+
+    # Anthropic Claude models on Vertex AI
+    claude-opus-4-6:   {input: 15.00, output: 75.00}
+    claude-sonnet-4-6: {input:  3.00, output: 15.00}
+    claude-haiku-4-5:  {input:  0.80, output:  4.00}
