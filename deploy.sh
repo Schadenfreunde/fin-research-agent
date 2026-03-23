@@ -98,7 +98,10 @@ FMP_SECRET=$(python3 -c "import yaml; c=yaml.safe_load(open('config.yaml')); pri
 CORE_SECRET=$(python3 -c "import yaml; c=yaml.safe_load(open('config.yaml')); print(c['secrets']['core_api_key'])")
 SS_SECRET=$(python3 -c "import yaml; c=yaml.safe_load(open('config.yaml')); print(c['secrets']['semantic_scholar_api_key'])")
 POLYGON_SECRET=$(python3 -c "import yaml; c=yaml.safe_load(open('config.yaml')); print(c['secrets']['polygon_api_key'])")
+NEWS_SECRET=$(python3 -c "import yaml; c=yaml.safe_load(open('config.yaml')); print(c['secrets']['news_api_key'])")
+OPENFIGI_SECRET=$(python3 -c "import yaml; c=yaml.safe_load(open('config.yaml')); print(c['secrets']['openfigi_api_key'])")
 SEARCH_INTERVAL=$(python3 -c "import yaml; c=yaml.safe_load(open('config.yaml')); print(c.get('search', {}).get('min_interval_seconds', 2.0))")
+MODEL_REGION=$(python3 -c "import yaml; c=yaml.safe_load(open('config.yaml')); print(c['google_cloud'].get('model_region', 'global'))")
 
 gcloud run deploy "${SERVICE_NAME}" \
   --image "${IMAGE_NAME}" \
@@ -109,8 +112,8 @@ gcloud run deploy "${SERVICE_NAME}" \
   --cpu 2 \
   --timeout 3600 \
   --max-instances 5 \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},REPORTS_BUCKET=${BUCKET},GOOGLE_GENAI_USE_VERTEXAI=1,GOOGLE_CLOUD_LOCATION=${REGION},SEC_USER_AGENT=${SEC_AGENT},SEARCH_MIN_INTERVAL=${SEARCH_INTERVAL}" \
-  --set-secrets "ALPHA_VANTAGE_KEY=${AV_SECRET}:latest,FRED_API_KEY=${FRED_SECRET}:latest,FINNHUB_API_KEY=${FINNHUB_SECRET}:latest,FMP_API_KEY=${FMP_SECRET}:latest,CORE_API_KEY=${CORE_SECRET}:latest,SEMANTIC_SCHOLAR_API_KEY=${SS_SECRET}:latest,POLYGON_API_KEY=${POLYGON_SECRET}:latest" \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},REPORTS_BUCKET=${BUCKET},GOOGLE_GENAI_USE_VERTEXAI=1,GOOGLE_CLOUD_LOCATION=${MODEL_REGION},SEC_USER_AGENT=${SEC_AGENT},SEARCH_MIN_INTERVAL=${SEARCH_INTERVAL}" \
+  --set-secrets "ALPHA_VANTAGE_KEY=${AV_SECRET}:latest,FRED_API_KEY=${FRED_SECRET}:latest,FINNHUB_API_KEY=${FINNHUB_SECRET}:latest,FMP_API_KEY=${FMP_SECRET}:latest,CORE_API_KEY=${CORE_SECRET}:latest,SEMANTIC_SCHOLAR_API_KEY=${SS_SECRET}:latest,POLYGON_API_KEY=${POLYGON_SECRET}:latest,NEWS_API_KEY=${NEWS_SECRET}:latest,OPENFIGI_API_KEY=${OPENFIGI_SECRET}:latest" \
   --quiet
 
 # ── Step 7: Get the service URL ────────────────────────────────────────────────
