@@ -876,22 +876,28 @@ def _clean_for_compiler(label: str, output: str) -> str:
 
 _ANALYST_SECTIONS: dict[str, list[str]] = {
     "fundamental-market": [
+        # Price & market context
         "price_finnhub", "key_metrics_finnhub", "analyst_ratings_finnhub",
         "earnings_finnhub", "analyst_estimates_fmp",
         "current_price_av", "company_overview_av", "eps_av",
         "ticker_details_polygon", "recent_news_polygon",
         "company_news_newsapi", "figi_mapping_openfigi",
+        # Financials — added for segment revenue & margin data needed in Section 2
+        # (without this the agent searches the web for data that's already in the API)
+        "income_statement_fmp",
     ],
     "fundamental-financials": [
-        "financials_finnhub",
+        "financials_finnhub",  # quarterly data — complements FMP annual
         "income_statement_fmp", "balance_sheet_fmp", "cash_flow_fmp", "key_metrics_fmp",
-        "income_statement_av",
+        # income_statement_av removed — redundant with income_statement_fmp (FMP is more detailed)
         "sec_revenue", "sec_net_income", "sec_long_term_debt", "sec_sbc",
     ],
     "competitive-analyst": [
         "ticker_details_polygon", "recent_news_polygon",
         "company_overview_av", "analyst_ratings_finnhub",
         "sec_recent_filings", "company_news_newsapi",
+        # Key metrics added — lets agent compare target company multiples without searching
+        "key_metrics_finnhub", "key_metrics_fmp",
     ],
     "risk-analyst": [
         "key_metrics_finnhub", "financials_finnhub",
@@ -901,7 +907,8 @@ _ANALYST_SECTIONS: dict[str, list[str]] = {
     ],
     "valuation-analyst": [
         "price_finnhub", "current_price_av",
-        "historical_prices_2y_weekly_finnhub", "historical_ohlcv_polygon",
+        "historical_prices_2y_weekly_finnhub",
+        # historical_ohlcv_polygon removed — duplicate of historical_prices_2y_weekly_finnhub
         "key_metrics_finnhub", "key_metrics_fmp",
         "analyst_estimates_fmp", "analyst_ratings_finnhub",
         "eps_av", "earnings_finnhub",
@@ -909,6 +916,7 @@ _ANALYST_SECTIONS: dict[str, list[str]] = {
     "earnings-quality": [
         "financials_finnhub",
         "income_statement_fmp", "balance_sheet_fmp", "cash_flow_fmp",
+        # income_statement_av kept here — earnings quality uses multi-source cross-checking
         "income_statement_av",
         "sec_sbc", "sec_revenue", "sec_net_income", "sec_insider_transactions",
     ],

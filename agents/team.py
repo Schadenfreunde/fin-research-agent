@@ -187,11 +187,13 @@ fundamental_analyst_market = Agent(
     model=MODEL_TIER3,
     description=(
         "Senior buy-side fundamental analyst (market focus). Produces only Sections 1 "
-        "(Investment Thesis) and 2 (Market Structure & TAM). Web-search focused with "
-        "minimal API calls. Runs in parallel with other analysts."
+        "(Investment Thesis) and 2 (Market Structure & TAM). Has income statement access "
+        "for segment revenue data; uses web search only for TAM/SAM sizing gaps. "
+        "Runs in parallel with other analysts."
     ),
     instruction=_load_prompt("fundamental_analyst_market.md"),
     tools=[
+        _tool(get_income_statement_fmp),   # fetch segment revenue if not in pre-gathered data
         _tool(search_web),
         _tool(search_earnings_transcript),
     ],
