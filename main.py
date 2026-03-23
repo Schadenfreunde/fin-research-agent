@@ -1137,6 +1137,52 @@ async def _run_equity_pipeline(topic: str, run_id: str,
             _processed.append(f"[ERROR: {_lbl} failed: {_res}]")
         else:
             _processed.append(_res)
+    # ── Retry failed analysts (up to _MAX_ANALYST_RETRIES rounds) ────────────
+    _MAX_ANALYST_RETRIES = CONFIG.get("retry", {}).get("max_analyst_retries", 3)
+    if _MAX_ANALYST_RETRIES > 0:
+        _agent_retry_map = {
+            0: (fundamental_analyst_market,    _FUNDAMENTAL_MARKET_TIMEOUT),
+            1: (fundamental_analyst_financials, _FUNDAMENTAL_FINANCIALS_TIMEOUT),
+            2: (competitive_analyst,           _COMPETITIVE_ANALYST_TIMEOUT),
+            3: (risk_analyst,                  _RISK_ANALYST_TIMEOUT),
+            4: (valuation_analyst,             _VALUATION_ANALYST_TIMEOUT),
+            5: (earnings_quality_agent,        _EARNINGS_QUALITY_TIMEOUT),
+        }
+        for _retry_round in range(1, _MAX_ANALYST_RETRIES + 1):
+            _failed_indices = [i for i, out in enumerate(_processed) if _is_placeholder(out)]
+            if not _failed_indices:
+                break
+            logger.info(
+                "[%s] ANALYST RETRY round %d/%d: %d failed — retrying: %s",
+                run_id, _retry_round, _MAX_ANALYST_RETRIES,
+                len(_failed_indices),
+                [_analyst_labels[i] for i in _failed_indices],
+            )
+            _retry_tasks = []
+            for i in _failed_indices:
+                _agent, _timeout = _agent_retry_map[i]
+                _retry_tasks.append(
+                    _run_agent(
+                        _agent,
+                        _make_analyst_context(_analyst_labels[i], **_ctx),
+                        f"{_analyst_labels[i]}-retry-{_retry_round}",
+                        run_id,
+                        timeout_seconds=_timeout,
+                        run_stats=run_stats,
+                    )
+                )
+            _retry_results = await asyncio.gather(*_retry_tasks, return_exceptions=True)
+            for j, i in enumerate(_failed_indices):
+                _rr = _retry_results[j]
+                _rlbl = _analyst_labels[i]
+                if isinstance(_rr, Exception):
+                    logger.error("[%s] %s retry-%d failed: %s", run_id, _rlbl, _retry_round, _rr)
+                elif not _is_placeholder(_rr):
+                    logger.info("[%s] %s retry-%d succeeded (%d chars)", run_id, _rlbl, _retry_round, len(_rr))
+                    _processed[i] = _rr
+                else:
+                    logger.warning("[%s] %s retry-%d still placeholder", run_id, _rlbl, _retry_round)
+
     (fundamental_market_out, fundamental_financials_out,
      competitive_out, risk_out, valuation_out, earnings_out) = _processed
 
@@ -1348,7 +1394,7 @@ async def _run_equity_pipeline(topic: str, run_id: str,
             f"This report has not been fully fact-checked or reviewed.*\n"
         )
 
-    # ── Step 6: Executive Summary (orchestrator writes it last) ────────────────
+    # ── Step 6: Executive Summary (orchestrator writes it last, up to 3 attempts) ─
     logger.info("[%s] STEP 6: Executive Summary (orchestrator)...", run_id)
     exec_context = (
         f"EXECUTIVE SUMMARY REQUEST\n"
@@ -1357,9 +1403,30 @@ async def _run_equity_pipeline(topic: str, run_id: str,
         f"section to appear at the very top of the final document.\n\n"
         f"COMPILED REPORT:\n{compiled}"
     )
-    exec_summary = await _run_agent(
-        research_orchestrator, exec_context, "exec-summary", run_id, run_stats=run_stats
-    )
+    _MAX_EXEC_RETRIES = CONFIG.get("retry", {}).get("max_exec_summary_retries", 3)
+    exec_summary = ""
+    for _exec_attempt in range(1, _MAX_EXEC_RETRIES + 1):
+        _exec_label = "exec-summary" if _exec_attempt == 1 else f"exec-summary-attempt-{_exec_attempt}"
+        exec_summary = await _run_agent(
+            research_orchestrator, exec_context, _exec_label, run_id, run_stats=run_stats
+        )
+        if not _is_placeholder(exec_summary):
+            if _exec_attempt > 1:
+                logger.info("[%s] exec-summary succeeded on attempt %d", run_id, _exec_attempt)
+            break
+        logger.warning(
+            "[%s] exec-summary attempt %d/%d failed — %s",
+            run_id, _exec_attempt, _MAX_EXEC_RETRIES,
+            "retrying" if _exec_attempt < _MAX_EXEC_RETRIES else "giving up",
+        )
+    if _is_placeholder(exec_summary):
+        logger.error("[%s] exec-summary failed after %d attempts — sending report without executive summary",
+                     run_id, _MAX_EXEC_RETRIES)
+        exec_summary = (
+            "## Executive Summary\n\n"
+            "*Executive summary unavailable — the orchestrator could not produce a summary "
+            f"after {_MAX_EXEC_RETRIES} attempts. Refer to individual sections below.*\n"
+        )
 
     # ── Assemble final report ──────────────────────────────────────────────────
     cost_section = format_cost_summary(run_stats) if run_stats is not None else ""
