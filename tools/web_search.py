@@ -173,11 +173,8 @@ def search_web(query: str, num_results: int = 10) -> dict:
         # directly on such a response emits a warning; iterate parts instead.
         text_parts = []
         if response.candidates and response.candidates[0].content:
-            text_parts = [
-                p.text
-                for p in response.candidates[0].content.parts
-                if getattr(p, "text", None)
-            ]
+            parts = response.candidates[0].content.parts or []
+            text_parts = [p.text for p in parts if getattr(p, "text", None)]
         summary = "\n".join(text_parts)
 
         return {
