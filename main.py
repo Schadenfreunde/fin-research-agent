@@ -964,15 +964,8 @@ _ANALYST_SECTIONS: dict[str, list[str]] = {
 # Prevents context bloat as new data sources (IMF, ECB, FX, commodities) are added.
 
 _MACRO_AGENT_SECTIONS: dict[str, list[str]] = {
-    "context-processor": [
-        # Broad view — needs to assess all available data to identify gaps
-        "yield_curve_snapshot", "recession_indicators",
-        "worldbank_macro_snapshot", "oecd_leading_indicators", "oecd_economic_outlook",
-        "imf_weo_snapshot", "ecb_macro_snapshot",
-        "fred_fx_rates", "fred_macro_indicators",
-        "alpha_vantage_commodities", "polygon_fx_snapshot",
-        "topic_news_newsapi",
-    ],
+    # NOTE: "context-processor" is intentionally absent — it receives a compact manifest
+    # via _macro_data_manifest() instead of full data, to avoid 700K+ token bloat.
     "macro-data-agent": [
         # Baseline context to know what's already gathered — NOT FX/commodities
         "yield_curve_snapshot", "recession_indicators",
@@ -1019,6 +1012,44 @@ def _slice_macro_data(macro_data: dict, agent_key: str) -> str:
     for label in allowed:
         if label in macro_data:
             lines.append(macro_data[label])
+    return "\n".join(lines)
+
+
+def _macro_data_manifest(macro_data: dict) -> str:
+    """
+    Returns a compact inventory of pre-gathered sections for the context processor.
+
+    The context processor only needs to know WHICH sections are available (to identify gaps
+    relative to the user's topic), not their full content. Full data is passed to downstream
+    analysis agents via _slice_macro_data(). Passing the full data to the context processor
+    caused 700K+ input tokens and consistent timeouts.
+    """
+    _SECTION_DESCRIPTIONS: dict[str, str] = {
+        "yield_curve_snapshot":      "US Treasury yield curve (3M, 2Y, 5Y, 10Y, 30Y) + 2s10s and 3m10y spreads",
+        "recession_indicators":      "FRED recession indicators: T10Y3M, Sahm Rule, UNRATE, PAYEMS, INDPRO, NFCI, STLFSI4",
+        "worldbank_macro_snapshot":  "World Bank annual data: GDP growth, inflation, unemployment, current account, gov debt, trade — 10 major economies",
+        "oecd_leading_indicators":   "OECD Composite Leading Indicators — 20 countries (monthly, 6-month horizon)",
+        "oecd_economic_outlook":     "OECD GDP growth projections — major economies",
+        "imf_weo_snapshot":          "IMF WEO forecasts: GDP, inflation, unemployment, current account — major economies",
+        "ecb_macro_snapshot":        "ECB deposit rate, main refinancing rate, Eurozone HICP (headline + core), M3 money supply",
+        "fred_fx_rates":             "FRED FX rates: EUR, JPY, GBP, CHF, KRW, INR, MXN, BRL, CNY, Trade-weighted USD",
+        "fred_macro_indicators":     "FRED commodities (WTI, Brent, gold, gas), ISM Manufacturing + Services PMI, consumer sentiment, HY + IG credit spreads",
+        "alpha_vantage_commodities": "AV monthly prices: WTI, Brent, natural gas, copper, wheat, corn (12-month history + YoY change)",
+        "polygon_fx_snapshot":       "Polygon previous-day OHLC: 11 major currency pairs",
+        "topic_news_newsapi":        "NewsAPI recent news articles for the topic",
+    }
+    available = [k for k in _SECTION_DESCRIPTIONS if k in macro_data]
+    missing   = [k for k in _SECTION_DESCRIPTIONS if k not in macro_data]
+
+    lines = [
+        "# PRE-GATHERED MACRO DATA — AVAILABLE SECTIONS",
+        "The following data sections are already gathered and will be passed to all downstream analysis agents.",
+        "DO NOT search for any data already covered below. Focus tool calls on topic-specific gaps only.\n",
+    ]
+    for key in available:
+        lines.append(f"- **{key}**: {_SECTION_DESCRIPTIONS[key]}")
+    if missing:
+        lines.append(f"\n_Sections not fetched this run (API failure or not applicable): {', '.join(missing)}_")
     return "\n".join(lines)
 
 
@@ -1588,7 +1619,7 @@ async def _run_macro_pipeline(topic: str, run_id: str,
             context_processor,
             (
                 f"USER CONTEXT:\n{user_context}\n\n"
-                f"PRE-GATHERED CORE MACRO DATA:\n{_slice_macro_data(macro_data_dict, 'context-processor')}\n\n"
+                f"PRE-GATHERED MACRO DATA INVENTORY:\n{_macro_data_manifest(macro_data_dict)}\n\n"
                 f"Topic: {topic}\nRun ID: {run_id}\n\n"
                 f"Identify gaps in the data relative to the user's focus. "
                 f"Fetch missing data within your budget. Return the ENRICHED CONTEXT NOTE "
