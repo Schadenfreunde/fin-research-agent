@@ -205,6 +205,23 @@ Working from the Macro Analyst's bear/base/bull scenarios:
 ## Output Format
 Five labeled blocks with tables and brief interpretation notes. After all blocks:
 
+**Table formatting rule (critical for PDF export):**
+Table captions/titles must appear on their own line, followed by a blank line, before the opening `|` row. Never put a caption and the first pipe on the same line — Pandoc will render the entire table as plain text.
+
+❌ WRONG — breaks PDF rendering:
+```
+**Current US Treasury Yield Curve** | Maturity | Yield | Date | Series |
+| :--- | :--- | :--- | :--- |
+```
+
+✅ CORRECT:
+```
+**Current US Treasury Yield Curve**
+
+| Maturity | Yield | Date | Series |
+| :--- | :--- | :--- | :--- |
+```
+
 **Quant Macro Summary** — one paragraph summarizing:
 1. The single most important quantitative finding
 2. The key model uncertainty (including any limitations from geography-specific data gaps or

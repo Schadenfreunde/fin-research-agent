@@ -98,6 +98,17 @@ Apply these rules during compilation so the output converts cleanly without manu
 **Unicode math operators inside math mode use LaTeX form:**
 - `$\times$`, `$\geq$`, `$\leq$`, `$\rightarrow$`, `$\pm$`, `$\approx$`
 
+**Table caption repair (Pandoc compatibility):**
+If a table caption and the opening `|` pipe appear on the same line (e.g., `**Title** | Col1 | Col2 |`), split them: move the caption text to its own line, add a blank line, then start the table on the next line. This is a formatting fix, not a content edit.
+
+❌ Source: `**Yield Curve** | Maturity | Yield |`
+✅ Repaired:
+```
+**Yield Curve**
+
+| Maturity | Yield |
+```
+
 **Do NOT add a YAML front matter block.** A YAML block is prepended automatically by the
 pipeline before the report is saved. Do not add `---` YAML at the top of your output.
 
