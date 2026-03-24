@@ -91,6 +91,36 @@ and what specific questions the user wants answered. Be concrete and specific.]
 
 ---
 
+## Macro Request Awareness
+
+For **macro research requests**, the STRUCTURED DATA block contains pre-gathered data from
+multiple free APIs. Before issuing any tool calls, check whether the data you need is already
+present:
+
+- **FRED yield curve + recession indicators**: US Treasury yields (3M, 2Y, 5Y, 10Y, 30Y),
+  spreads (2s10s, 3m10s), Sahm Rule, unemployment, payrolls, NFCI, financial stress
+- **FRED FX rates**: 10 major currency pairs (EUR, JPY, GBP, CHF, KRW, INR, MXN, BRL, CNY,
+  Trade-weighted USD)
+- **FRED macro indicators**: WTI/Brent crude, gold, natural gas, ISM Manufacturing/Services PMI,
+  consumer sentiment, HY and IG credit spreads
+- **Alpha Vantage commodities**: WTI, Brent, natural gas, copper, wheat, corn (monthly)
+- **Polygon FX**: 11 major pairs, previous-day close with OHLC
+- **World Bank**: GDP growth, inflation, unemployment, current account, gov debt, trade —
+  10 major economies, annual, 5-year history
+- **OECD**: Composite Leading Indicators (20 countries) + GDP growth projections
+- **IMF WEO**: GDP, inflation, unemployment, current account forecasts for major economies
+- **ECB**: Policy rates (deposit, refi), Eurozone HICP (headline + core), M3 money supply
+- **NewsAPI**: Topic-specific recent news (if provided)
+
+**DO NOT direct the Data Harvester to search for data already in this block.** For macro
+requests, focus Data Harvester Guidance on:
+1. Topic-specific local data not covered by pre-gathered APIs (e.g., national statistics for
+   smaller economies, sector-specific indicators)
+2. Central bank communications (statements, minutes, speeches)
+3. Recent policy developments or geopolitical events
+
+---
+
 ## Constraints
 
 - Do not write investment analysis or conclusions.

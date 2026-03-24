@@ -97,6 +97,8 @@ from tools.news_api import get_company_news_newsapi, get_topic_news_newsapi
 from tools.openfigi_data import get_figi_mapping
 from tools.worldbank_data import get_worldbank_macro_snapshot
 from tools.oecd_data import get_oecd_leading_indicators, get_oecd_economic_outlook
+from tools.stock_data import get_commodity_prices_alpha
+from tools.polygon_data import get_forex_snapshot_polygon
 from tools.debug_report import (
     RunStats,
     create_run_stats,
@@ -783,33 +785,54 @@ async def _gather_structured_data(ticker: str, run_id: str) -> tuple:
     return structured_text, company_name
 
 
-async def _gather_macro_data(run_id: str, topic: str = "") -> str:
+async def _gather_macro_data(run_id: str, topic: str = "") -> dict[str, str]:
     """
     Pre-fetch core macro background data for the macro pipeline.
 
-    Data sources gathered in parallel:
-      - FRED yield curve snapshot and recession indicators (US background)
-      - World Bank cross-country macro snapshot (GDP, inflation, unemployment,
-        current account, government debt — major economies, annual, no key required)
-      - OECD Composite Leading Indicators and Economic Outlook projections
-        (forward-looking business cycle signals for 20 OECD members, no key required)
-      - NewsAPI topic-specific news (if topic provided and NEWS_API_KEY is set)
+    Returns a dict of {label: formatted_text} for use with _slice_macro_data().
 
-    Topic-specific FRED series are handled downstream by the macro_data_agent LLM.
+    Data sources gathered in parallel:
+      - FRED yield curve snapshot, recession indicators, FX rates, commodities,
+        PMI, credit spreads (US background + global context)
+      - World Bank cross-country macro snapshot (annual, 10 major economies)
+      - OECD CLI + Economic Outlook projections (forward-looking)
+      - IMF WEO projections (GDP, inflation, unemployment, current account)
+      - ECB macro snapshot (policy rates, HICP, M3 — Eurozone)
+      - Alpha Vantage commodity prices (WTI, Brent, gas, copper, wheat, corn)
+      - Polygon FX snapshot (11 major pairs, previous-day close)
+      - NewsAPI topic-specific news (if topic provided)
     """
     import json as _json
-    from tools.macro_data import get_yield_curve_snapshot, get_recession_indicators
+    from tools.macro_data import (
+        get_yield_curve_snapshot, get_recession_indicators, get_multiple_series,
+    )
 
     loop = asyncio.get_running_loop()
-    logger.info("[%s] Gathering core macro data (FRED + World Bank + OECD + NewsAPI)...", run_id)
+    logger.info("[%s] Gathering core macro data (FRED + WB + OECD + IMF + ECB + AV + Polygon + NewsAPI)...", run_id)
 
-    # Build coroutines list — always include FRED, World Bank, OECD
+    # FRED FX series — 10 major currency pairs
+    _FRED_FX_SERIES = [
+        "DEXUSEU", "DEXJPUS", "DEXUSUK", "DTWEXBGS", "DEXSZUS",
+        "DEXKOUS", "DEXINUS", "DEXMXUS", "DEXBZUS", "DEXCHUS",
+    ]
+    # FRED macro indicators — commodities, PMI, credit spreads
+    _FRED_MACRO_SERIES = [
+        "DCOILWTICO", "DCOILBRENTEU", "GOLDAMGBD228NLBM", "DHHNGSP",  # commodities
+        "NAPM", "NMFBAI", "UMCSENT",  # leading indicators
+        "BAMLH0A0HYM2", "BAMLC0A0CM",  # credit spreads
+    ]
+
+    # Build coroutines list — always include all sources
     coros = [
         loop.run_in_executor(_DATA_EXECUTOR, get_yield_curve_snapshot),
         loop.run_in_executor(_DATA_EXECUTOR, get_recession_indicators),
         loop.run_in_executor(_DATA_EXECUTOR, get_worldbank_macro_snapshot),
         loop.run_in_executor(_DATA_EXECUTOR, get_oecd_leading_indicators),
         loop.run_in_executor(_DATA_EXECUTOR, get_oecd_economic_outlook),
+        loop.run_in_executor(_DATA_EXECUTOR, get_multiple_series, _FRED_FX_SERIES),
+        loop.run_in_executor(_DATA_EXECUTOR, get_multiple_series, _FRED_MACRO_SERIES),
+        loop.run_in_executor(_DATA_EXECUTOR, get_commodity_prices_alpha),
+        loop.run_in_executor(_DATA_EXECUTOR, get_forex_snapshot_polygon),
     ]
     labels = [
         "yield_curve_snapshot",
@@ -817,35 +840,48 @@ async def _gather_macro_data(run_id: str, topic: str = "") -> str:
         "worldbank_macro_snapshot",
         "oecd_leading_indicators",
         "oecd_economic_outlook",
+        "fred_fx_rates",
+        "fred_macro_indicators",
+        "alpha_vantage_commodities",
+        "polygon_fx_snapshot",
     ]
 
-    # Conditionally add topic NewsAPI call if topic is provided
+    # IMF WEO — try import; skip gracefully if module not yet deployed
+    try:
+        from tools.imf_data import get_imf_weo_snapshot
+        coros.append(loop.run_in_executor(_DATA_EXECUTOR, get_imf_weo_snapshot))
+        labels.append("imf_weo_snapshot")
+    except ImportError:
+        logger.warning("[%s] tools.imf_data not available — skipping IMF WEO", run_id)
+
+    # ECB SDMX — try import; skip gracefully if module not yet deployed
+    try:
+        from tools.ecb_data import get_ecb_macro_snapshot
+        coros.append(loop.run_in_executor(_DATA_EXECUTOR, get_ecb_macro_snapshot))
+        labels.append("ecb_macro_snapshot")
+    except ImportError:
+        logger.warning("[%s] tools.ecb_data not available — skipping ECB data", run_id)
+
+    # NewsAPI — conditional on topic
     if topic:
         coros.append(loop.run_in_executor(_DATA_EXECUTOR, get_topic_news_newsapi, topic))
         labels.append("topic_news_newsapi")
 
     results = await asyncio.gather(*coros, return_exceptions=True)
 
-    lines = [
-        "# BACKGROUND MACRO DATA (FRED + World Bank + OECD + NewsAPI)",
-        "# FRED: US yield curve and recession indicators — cross-market context for non-US topics.",
-        "# World Bank: cross-country annual indicators for 10 major economies (5-year history).",
-        "# OECD CLI: forward-looking business cycle signals — CLI >100 rising = expansion.",
-        "# OECD EO: annual GDP growth actuals + near-term projections per OECD member.",
-        "# NewsAPI: recent topic-specific news from premium financial outlets (if key set).",
-        "# DO NOT re-call any of these data sources.\n",
-    ]
+    # Build per-label formatted text dict
+    macro_sections: dict[str, str] = {}
     for label, result in zip(labels, results):
         if isinstance(result, Exception):
-            lines.append(f"## {label}\n[ERROR: {result}]\n")
+            macro_sections[label] = f"## {label}\n[ERROR: {result}]\n"
         else:
-            lines.append(
+            macro_sections[label] = (
                 f"## {label}\n```json\n{_json.dumps(result, indent=2, default=str)}\n```\n"
             )
 
-    macro_text = "\n".join(lines)
-    logger.info("[%s] Core macro data gathered (%d chars)", run_id, len(macro_text))
-    return macro_text
+    total_chars = sum(len(v) for v in macro_sections.values())
+    logger.info("[%s] Core macro data gathered (%d chars across %d sources)", run_id, total_chars, len(macro_sections))
+    return macro_sections
 
 
 # ── Compiler input sanitisation ───────────────────────────────────────────────
@@ -921,6 +957,69 @@ _ANALYST_SECTIONS: dict[str, list[str]] = {
         "sec_sbc", "sec_revenue", "sec_net_income", "sec_insider_transactions",
     ],
 }
+
+
+# ── Per-agent macro data slicing ──────────────────────────────────────────────
+# Each macro agent receives only the pre-gathered data sections relevant to its role.
+# Prevents context bloat as new data sources (IMF, ECB, FX, commodities) are added.
+
+_MACRO_AGENT_SECTIONS: dict[str, list[str]] = {
+    "context-processor": [
+        # Broad view — needs to assess all available data to identify gaps
+        "yield_curve_snapshot", "recession_indicators",
+        "worldbank_macro_snapshot", "oecd_leading_indicators", "oecd_economic_outlook",
+        "imf_weo_snapshot", "ecb_macro_snapshot",
+        "fred_fx_rates", "fred_macro_indicators",
+        "alpha_vantage_commodities", "polygon_fx_snapshot",
+        "topic_news_newsapi",
+    ],
+    "macro-data-agent": [
+        # Baseline context to know what's already gathered — NOT FX/commodities
+        "yield_curve_snapshot", "recession_indicators",
+        "worldbank_macro_snapshot", "oecd_leading_indicators", "oecd_economic_outlook",
+        "imf_weo_snapshot", "topic_news_newsapi",
+    ],
+    "macro-analyst": [
+        # Needs most data for comprehensive 8-section report
+        "yield_curve_snapshot", "recession_indicators",
+        "worldbank_macro_snapshot", "oecd_leading_indicators", "oecd_economic_outlook",
+        "imf_weo_snapshot", "ecb_macro_snapshot",
+        "fred_fx_rates", "fred_macro_indicators",
+        "topic_news_newsapi",
+    ],
+    "quant-modeler-macro": [
+        # Numerical data for regressions/models — NOT news, NOT World Bank (annual/lagged)
+        "yield_curve_snapshot", "recession_indicators",
+        "fred_fx_rates", "fred_macro_indicators",
+        "ecb_macro_snapshot", "imf_weo_snapshot",
+    ],
+}
+
+
+def _slice_macro_data(macro_data: dict, agent_key: str) -> str:
+    """
+    Filter the pre-gathered macro data dict by the agent's allowed sections.
+
+    Args:
+        macro_data: dict of {label: formatted_text} from _gather_macro_data()
+        agent_key: Key into _MACRO_AGENT_SECTIONS (e.g., "macro-analyst")
+
+    Returns:
+        Formatted text block with only the relevant sections.
+    """
+    allowed = _MACRO_AGENT_SECTIONS.get(agent_key)
+    if allowed is None:
+        # Unknown agent — pass all data
+        allowed = list(macro_data.keys())
+
+    lines = [
+        "# BACKGROUND MACRO DATA (pre-gathered by Python — DO NOT re-fetch)",
+        "# Only sections relevant to your role are included below.\n",
+    ]
+    for label in allowed:
+        if label in macro_data:
+            lines.append(macro_data[label])
+    return "\n".join(lines)
 
 
 def _slice_structured_data(structured_data: str, include_sections: list[str]) -> str:
@@ -1462,21 +1561,22 @@ async def _run_macro_pipeline(topic: str, run_id: str,
       5.  Review loop (fact checker + review agent, up to max_passes)
     """
 
-    # ── Step 1a: Core FRED data — Python fetches directly ────────────────────
-    # 60s top-level timeout: FRED API hangs are the primary risk here.
-    logger.info("[%s] STEP 1a: Fetching FRED macro data (yield curve, recession indicators)...", run_id)
+    # ── Step 1a: Core macro data — Python fetches directly ──────────────────
+    # 90s top-level timeout: covers FRED + World Bank + OECD + IMF + ECB + AV + Polygon.
+    logger.info("[%s] STEP 1a: Fetching macro data (FRED + WB + OECD + IMF + ECB + AV + Polygon)...", run_id)
     try:
-        macro_base_data = await asyncio.wait_for(
+        macro_data_dict = await asyncio.wait_for(
             _gather_macro_data(run_id, topic=topic), timeout=90
         )
     except asyncio.TimeoutError:
-        logger.warning("[%s] TIMEOUT: _gather_macro_data exceeded 60s — continuing with placeholder", run_id)
-        macro_base_data = (
-            "# PRE-GATHERED CORE MACRO DATA (FRED + World Bank + OECD + NewsAPI)\n"
-            "[TIMEOUT: Background macro data APIs did not respond within 90s. "
-            "Use web_search to source macro data for this run.]\n"
-        )
-    logger.info("[%s] STEP 1a: FRED data complete", run_id)
+        logger.warning("[%s] TIMEOUT: _gather_macro_data exceeded 90s — continuing with placeholder", run_id)
+        macro_data_dict = {
+            "_timeout": (
+                "## _timeout\n[TIMEOUT: Background macro data APIs did not respond within 90s. "
+                "Use web_search to source macro data for this run.]\n"
+            ),
+        }
+    logger.info("[%s] STEP 1a: Macro data complete (%d sources)", run_id, len(macro_data_dict))
 
     # ── Step 1b: Context Processor — enrich user context (optional) ──────────
     # Runs FIRST so the Data Harvester Guidance section can direct the Macro Data
@@ -1488,7 +1588,7 @@ async def _run_macro_pipeline(topic: str, run_id: str,
             context_processor,
             (
                 f"USER CONTEXT:\n{user_context}\n\n"
-                f"PRE-GATHERED CORE MACRO DATA:\n{macro_base_data}\n\n"
+                f"PRE-GATHERED CORE MACRO DATA:\n{_slice_macro_data(macro_data_dict, 'context-processor')}\n\n"
                 f"Topic: {topic}\nRun ID: {run_id}\n\n"
                 f"Identify gaps in the data relative to the user's focus. "
                 f"Fetch missing data within your budget. Return the ENRICHED CONTEXT NOTE "
@@ -1509,8 +1609,8 @@ async def _run_macro_pipeline(topic: str, run_id: str,
     data_output = await _run_agent(
         macro_data_agent,
         (
-            f"US CORE MACRO DATA (background context — use only if directly relevant to the topic):\n\n"
-            f"{macro_base_data}\n\n"
+            f"PRE-GATHERED MACRO DATA (background context — DO NOT re-fetch):\n\n"
+            f"{_slice_macro_data(macro_data_dict, 'macro-data-agent')}\n\n"
             f"---\n\n"
             f"Macro research topic: {topic}\n\n"
             + (
@@ -1569,7 +1669,8 @@ async def _run_macro_pipeline(topic: str, run_id: str,
         f"IMPORTANT SCOPE: Stay focused on the topic's primary geography and theme. "
         f"The US core macro data below is background context — include it only where a direct "
         f"cross-market transmission mechanism to the topic can be stated.\n\n"
-        f"US CORE MACRO DATA (background context):\n{macro_base_data}\n\n"
+        f"PRE-GATHERED MACRO DATA (background context — DO NOT re-fetch):\n"
+        f"{_slice_macro_data(macro_data_dict, 'macro-analyst')}\n\n"
         f"MACRO DATA AGENT OUTPUT (topic-specific data + web sources):\n{data_output}\n\n"
         f"MACRO SOURCE VALIDATOR OUTPUT (validated + augmented source package):\n"
         f"{source_validator_out}\n\n"
@@ -1584,10 +1685,8 @@ async def _run_macro_pipeline(topic: str, run_id: str,
     )
 
     # ── Step 3: Quant Modeler (Macro) ──────────────────────────────────────────
-    # Phase 2F: Pass only macro_base_data (raw FRED numbers for yield-curve math)
-    # and analysis_out (analyst's synthesis, which already incorporates data_output
-    # and source_validator_out). Dropping the redundant ~40% of context resolves
-    # the known "quant_modeler_macro low output" issue caused by context overload.
+    # Sliced data: yields, FX, commodities, spreads, ECB, IMF — numerical data
+    # for regressions. News and World Bank (lagged annual) excluded.
     quant_context = (
         f"MACRO QUANT ANALYSIS REQUEST\n"
         f"Topic: {topic}\n"
@@ -1595,7 +1694,8 @@ async def _run_macro_pipeline(topic: str, run_id: str,
         f"IMPORTANT: Identify the primary geography from the topic and the Macro Analyst's "
         f"output. Use geography-appropriate yield curve series, recession models, and "
         f"regression benchmarks — NOT US indicators unless the topic is explicitly US-focused.\n\n"
-        f"CORE MACRO DATA (FRED — US yield curve + recession indicators):\n{macro_base_data}\n\n"
+        f"PRE-GATHERED MACRO DATA (numerical — DO NOT re-fetch):\n"
+        f"{_slice_macro_data(macro_data_dict, 'quant-modeler-macro')}\n\n"
         f"MACRO ANALYST OUTPUT (already synthesises all topic-specific data and sources):\n{analysis_out}\n\n"
         f"Produce geography-aware econometric models, yield curve analysis (using indicators "
         f"for the topic's geography), and source credibility evaluation."

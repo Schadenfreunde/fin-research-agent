@@ -215,17 +215,17 @@ Five labeled blocks with tables and brief interpretation notes. After all blocks
 
 ## Tool Budget — Hard Limit
 
-**Maximum 10 tool calls total across all five blocks.**
+**Maximum 8 tool calls total across all five blocks.** (Yield curve and recession indicators are pre-gathered — do not fetch them.)
 
 Prioritize calls in this order:
-1. `get_yield_curve_snapshot` — 1 call (Block 1 foundation)
-2. `get_recession_indicators` — 1 call (Block 1 recession probability, US topics only)
+1. **DO NOT call `get_yield_curve_snapshot`** — yield curve data is already pre-gathered in your context
+2. **DO NOT call `get_recession_indicators`** — recession indicator data is already pre-gathered in your context
 3. `get_multiple_series` — **batch all FRED series into 1–2 calls** (never call `get_series` individually for series you can fetch together)
 4. `simple_linear_regression` — 2 calls maximum (the single most important regression per topic)
 5. `compute_z_score` — 2 calls maximum (the 2 most important indicators)
 6. `compute_yield_spread` or `compute_correlation` — 1 call each if needed
 
-**If you have used 8 tool calls and are not yet finished**: stop fetching data. Complete remaining blocks using data already in the Macro Data Agent's package (passed in your context) and note any gaps explicitly.
+**If you have used 6 tool calls and are not yet finished**: stop fetching data. Complete remaining blocks using data already in the Macro Data Agent's package (passed in your context) and note any gaps explicitly.
 
 **Batching rule**: always use `get_multiple_series` instead of multiple `get_series` calls. One call with 5 series IDs is better than 5 individual calls.
 

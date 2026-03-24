@@ -2,7 +2,7 @@
 polygon_data.py — Polygon.io free-tier API client.
 
 Primary use: reliable company name, sector, and SIC code via ticker details endpoint.
-Fallback OHLCV and news also available.
+Also provides: fallback OHLCV, news, and forex snapshots for macro analysis.
 
 Free tier limits:
   - Unlimited API calls (with API key)
@@ -197,4 +197,53 @@ def get_recent_news_polygon(ticker: str, limit: int = 20) -> dict:
         "article_count": len(trimmed),
         "results": trimmed,
         "source": "polygon_news",
+    }
+
+
+# ── Forex snapshot (macro pipeline) ──────────────────────────────────────────
+
+# Polygon forex tickers use C:{FROM}{TO} format, e.g., C:EURUSD
+_POLYGON_FX_PAIRS = [
+    ("EUR", "USD"), ("GBP", "USD"), ("USD", "JPY"), ("USD", "CHF"),
+    ("AUD", "USD"), ("USD", "CAD"), ("USD", "CNY"), ("USD", "INR"),
+    ("USD", "BRL"), ("USD", "MXN"), ("USD", "KRW"),
+]
+
+
+def get_forex_snapshot_polygon() -> dict:
+    """
+    Fetch previous-day close for major FX pairs from Polygon.
+
+    Uses /v2/aggs/ticker/C:{FROM}{TO}/prev for each pair.
+    Free tier: unlimited calls, 15-minute delay. Returns previous trading day close.
+
+    Returns:
+        Dictionary with per-pair FX rates, or error dict if Polygon key is missing.
+    """
+    pairs = {}
+    for from_ccy, to_ccy in _POLYGON_FX_PAIRS:
+        ticker = f"C:{from_ccy}{to_ccy}"
+        data = _polygon_get(f"/v2/aggs/ticker/{ticker}/prev")
+
+        if "error" in data:
+            pairs[f"{from_ccy}/{to_ccy}"] = {"error": data["error"]}
+            continue
+
+        results = data.get("results", [])
+        if results:
+            bar = results[0]
+            pairs[f"{from_ccy}/{to_ccy}"] = {
+                "close": bar.get("c"),
+                "open": bar.get("o"),
+                "high": bar.get("h"),
+                "low": bar.get("l"),
+                "timestamp": bar.get("t"),
+            }
+        else:
+            pairs[f"{from_ccy}/{to_ccy}"] = {"error": "no data returned"}
+
+    return {
+        "fetched_date": datetime.date.today().isoformat(),
+        "source": "Polygon.io Forex Previous Day Close (free tier — unlimited, 15-min delay)",
+        "pairs": pairs,
     }

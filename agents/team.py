@@ -236,6 +236,7 @@ context_processor = Agent(
         _tool(search_news),
         _tool(search_earnings_transcript),
         _tool(search_analyst_reports),
+        _tool(search_academic_core),  # Free (no Vertex AI quota) — useful for macro topics
     ],
 )
 
@@ -392,8 +393,8 @@ macro_data_agent = Agent(
     tools=[
         _tool(get_series),
         _tool(get_multiple_series),
-        _tool(get_yield_curve_snapshot),
-        _tool(get_recession_indicators),
+        # get_yield_curve_snapshot and get_recession_indicators are pre-gathered in context —
+        # removed from tool list to prevent re-fetching
         _tool(search_web),
         _tool(search_news),
         _tool(search_academic_papers),
@@ -443,8 +444,8 @@ quant_modeler_macro = Agent(
     tools=[
         _tool(get_series),
         _tool(get_multiple_series),
-        _tool(get_yield_curve_snapshot),
-        _tool(get_recession_indicators),
+        # get_yield_curve_snapshot and get_recession_indicators are pre-gathered in context —
+        # removed from tool list to prevent re-fetching
         _tool(simple_linear_regression),
         _tool(compute_yield_spread),
         _tool(compute_z_score),
