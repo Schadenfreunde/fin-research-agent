@@ -10,6 +10,7 @@ import datetime
 import json
 import subprocess
 import tempfile
+import time
 from typing import Optional
 
 from google.cloud import storage as gcs
@@ -159,26 +160,53 @@ def save_latex_report(
         Dictionary with storage path and status.
     """
     try:
-        # Write markdown to a temp file, run pandoc, read .tex output
-        with tempfile.TemporaryDirectory() as tmpdir:
-            md_path = os.path.join(tmpdir, "report.md")
-            tex_path = os.path.join(tmpdir, "report.tex")
+        # Write markdown to a temp file, run pandoc, read .tex output.
+        # Retry up to 3 times — pandoc YAML parse failures are occasionally
+        # transient (HsYAML parser can fail on first attempt then succeed on retry).
+        _PANDOC_MAX_RETRIES = 3
+        tex_content = None
+        last_pandoc_error = None
 
-            with open(md_path, "w", encoding="utf-8") as f:
-                f.write(md_content)
+        for _pandoc_attempt in range(1, _PANDOC_MAX_RETRIES + 1):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                md_path = os.path.join(tmpdir, "report.md")
+                tex_path = os.path.join(tmpdir, "report.tex")
 
-            result = subprocess.run(
-                ["pandoc", md_path, "--standalone", "-o", tex_path],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
+                with open(md_path, "w", encoding="utf-8") as f:
+                    f.write(md_content)
 
-            if result.returncode != 0:
-                raise RuntimeError(f"pandoc failed: {result.stderr}")
+                result = subprocess.run(
+                    ["pandoc", md_path, "--standalone", "-o", tex_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
 
-            with open(tex_path, "r", encoding="utf-8") as f:
-                tex_content = f.read()
+                if result.returncode == 0:
+                    with open(tex_path, "r", encoding="utf-8") as f:
+                        tex_content = f.read()
+                    if _pandoc_attempt > 1:
+                        print(
+                            f"[save_latex_report] pandoc succeeded on attempt "
+                            f"{_pandoc_attempt}/{_PANDOC_MAX_RETRIES} for "
+                            f"{report_type}/{identifier}"
+                        )
+                    break
+                else:
+                    last_pandoc_error = result.stderr.strip()
+                    # Log diagnostics to aid root-cause analysis
+                    content_prefix = repr(md_content[:300])
+                    print(
+                        f"[save_latex_report] pandoc attempt {_pandoc_attempt}/"
+                        f"{_PANDOC_MAX_RETRIES} failed for {report_type}/{identifier}.\n"
+                        f"  stderr: {last_pandoc_error}\n"
+                        f"  content[:300]: {content_prefix}"
+                    )
+                    if _pandoc_attempt < _PANDOC_MAX_RETRIES:
+                        time.sleep(2)
+
+        if tex_content is None:
+            raise RuntimeError(f"pandoc failed after {_PANDOC_MAX_RETRIES} attempts: {last_pandoc_error}")
 
         # Upload .tex to GCS
         client = gcs.Client()
