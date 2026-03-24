@@ -36,7 +36,6 @@ credentials*.json
 # ── Internal docs (maintenance notes, bug logs, private guides) ────────────
 MAINTENANCE.md
 MAINTENANCE_GUIDE.md
-project_guide.md
 fixed_bugs.md
 check.md
 docs/
