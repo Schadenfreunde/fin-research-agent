@@ -449,11 +449,18 @@ def generate_debug_report(stats: RunStats) -> str:
     recommendations = []
 
     if stats.structured_data_status == "timeout":
-        recommendations.append(
-            "⚠️ **Structured data timed out** — Finnhub/FMP/EDGAR APIs did not respond within the "
-            "120-second window. Check API availability and consider increasing the `_gather_structured_data` "
-            "timeout in `main.py` if this recurs."
-        )
+        if stats.report_type == "macro":
+            recommendations.append(
+                "⚠️ **Macro pre-gather timed out** — FRED/WorldBank/OECD/IMF/ECB/AV/Polygon APIs did not "
+                "respond within the 90-second window. Check API availability and consider increasing the "
+                "`_gather_macro_data` timeout in `main.py` if this recurs."
+            )
+        else:
+            recommendations.append(
+                "⚠️ **Structured data timed out** — Finnhub/FMP/EDGAR APIs did not respond within the "
+                "120-second window. Check API availability and consider increasing the `_gather_structured_data` "
+                "timeout in `main.py` if this recurs."
+            )
     elif stats.structured_data_status == "error":
         recommendations.append(
             "⚠️ **Structured data errored** — one or more API calls failed at the data-gathering stage. "

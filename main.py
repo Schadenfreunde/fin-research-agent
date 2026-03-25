@@ -1595,12 +1595,21 @@ async def _run_macro_pipeline(topic: str, run_id: str,
     # ── Step 1a: Core macro data — Python fetches directly ──────────────────
     # 90s top-level timeout: covers FRED + World Bank + OECD + IMF + ECB + AV + Polygon.
     logger.info("[%s] STEP 1a: Fetching macro data (FRED + WB + OECD + IMF + ECB + AV + Polygon)...", run_id)
+    _macro_gather_start = datetime.datetime.utcnow()
     try:
         macro_data_dict = await asyncio.wait_for(
             _gather_macro_data(run_id, topic=topic), timeout=90
         )
+        if run_stats is not None:
+            run_stats.structured_data_duration_s = (
+                datetime.datetime.utcnow() - _macro_gather_start
+            ).total_seconds()
+            run_stats.structured_data_status = "ok"
     except asyncio.TimeoutError:
         logger.warning("[%s] TIMEOUT: _gather_macro_data exceeded 90s — continuing with placeholder", run_id)
+        if run_stats is not None:
+            run_stats.structured_data_duration_s = 90.0
+            run_stats.structured_data_status = "timeout"
         macro_data_dict = {
             "_timeout": (
                 "## _timeout\n[TIMEOUT: Background macro data APIs did not respond within 90s. "
