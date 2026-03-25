@@ -1,555 +1,285 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FinResearchAgent — Pipeline Flow</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>FinResearchAgent — Pipeline Flow (v2)</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    background: #0f1117;
-    color: #e2e8f0;
-    min-height: 100vh;
-  }
-
-  /* ── Header ─────────────────────────────────────── */
-  header {
-    background: linear-gradient(135deg, #1a1f2e 0%, #16213e 100%);
-    border-bottom: 1px solid #2d3748;
-    padding: 20px 32px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  header h1 { font-size: 1.4rem; font-weight: 700; color: #63b3ed; letter-spacing: .5px; }
-  header p  { font-size: .8rem; color: #718096; margin-top: 2px; }
-
-  .tab-bar {
-    display: flex; gap: 8px;
-  }
-  .tab {
-    padding: 8px 20px;
-    border-radius: 6px;
-    font-size: .8rem;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid #2d3748;
-    background: #1a202c;
-    color: #718096;
-    transition: all .2s;
-  }
-  .tab.active { background: #2b6cb0; border-color: #2b6cb0; color: #fff; }
-  .tab:hover:not(.active) { border-color: #4a5568; color: #a0aec0; }
-
-  /* ── Main canvas ─────────────────────────────────── */
-  .canvas { padding: 32px; overflow-x: auto; }
-  .pipeline { display: none; }
-  .pipeline.active { display: block; }
-
-  /* ── Lane labels ─────────────────────────────────── */
-  .lane-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-  }
-  .lane {
-    display: flex;
-    align-items: flex-start;
-    gap: 0;
-    position: relative;
-  }
-  .lane-label {
-    width: 120px;
-    min-width: 120px;
-    font-size: .7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #4a5568;
-    padding-top: 28px;
-    text-align: right;
-    padding-right: 16px;
-  }
-  .lane-body {
-    flex: 1;
-    border-left: 2px dashed #2d3748;
-    padding: 12px 0 12px 20px;
-    display: flex;
-    align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-
-  /* ── Nodes ───────────────────────────────────────── */
-  .node {
-    background: #1a202c;
-    border: 1.5px solid #2d3748;
-    border-radius: 10px;
-    padding: 12px 14px;
-    min-width: 170px;
-    max-width: 220px;
-    cursor: pointer;
-    transition: all .2s;
-    position: relative;
-  }
-  .node:hover { border-color: #4299e1; transform: translateY(-2px); box-shadow: 0 4px 20px rgba(66,153,225,.2); }
-  .node.selected { border-color: #4299e1; box-shadow: 0 0 0 2px rgba(66,153,225,.3); }
-
-  .node-title {
-    font-size: .78rem;
-    font-weight: 700;
-    color: #e2e8f0;
-    margin-bottom: 4px;
-  }
-  .node-sub {
-    font-size: .68rem;
-    color: #718096;
-    line-height: 1.4;
-  }
-  .node-badge {
-    display: inline-block;
-    font-size: .6rem;
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 20px;
-    margin-top: 6px;
-  }
-  .badge-data   { background: #1c4532; color: #68d391; }
-  .badge-analyst{ background: #1a365d; color: #63b3ed; }
-  .badge-quant  { background: #322659; color: #b794f4; }
-  .badge-review { background: #7b341e; color: #fc8181; }
-  .badge-report { background: #234e52; color: #4fd1c5; }
-  .badge-orch   { background: #2d3748; color: #ecc94b; }
-  .badge-python { background: #2d2d00; color: #d4a017; }
-
-  /* ── Arrow connectors ────────────────────────────── */
-  .connector-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
-    padding: 2px 0 2px 140px;
-    position: relative;
-  }
-  .arrow-down {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    font-size: .65rem;
-    color: #4a5568;
-  }
-  .arrow-down .line { width: 2px; background: #4a5568; flex: 1; min-height: 16px; }
-  .arrow-down .head { color: #4a5568; font-size: .9rem; line-height: 1; }
-  .arrow-down .label { font-size: .62rem; color: #718096; text-align: center; max-width: 120px; margin: 2px 0; }
-
-  /* parallel block */
-  .parallel-block {
-    background: #141920;
-    border: 1.5px dashed #2b6cb0;
-    border-radius: 12px;
-    padding: 12px 14px 12px 14px;
-    margin: 2px 0;
-  }
-  .parallel-title {
-    font-size: .65rem;
-    font-weight: 700;
-    color: #4299e1;
-    text-transform: uppercase;
-    letter-spacing: .8px;
-    margin-bottom: 10px;
-  }
-  .parallel-nodes {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-
-  /* loop block */
-  .loop-block {
-    border: 2px solid #c05621;
-    border-radius: 12px;
-    padding: 14px;
-    margin: 2px 0;
-    position: relative;
-    background: #1a150f;
-  }
-  .loop-label {
-    position: absolute;
-    top: -11px;
-    left: 16px;
-    background: #c05621;
-    color: #fff;
-    font-size: .65rem;
-    font-weight: 700;
-    padding: 2px 10px;
-    border-radius: 20px;
-    text-transform: uppercase;
-    letter-spacing: .8px;
-  }
-  .loop-nodes {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 8px;
-    align-items: flex-start;
-  }
-  .loop-arrow {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: .65rem;
-    color: #c05621;
-    margin-top: 8px;
-  }
-
-  /* ── Detail panel ────────────────────────────────── */
-  .detail-panel {
-    position: fixed;
-    right: 0; top: 0; bottom: 0;
-    width: 360px;
-    background: #1a1f2e;
-    border-left: 1px solid #2d3748;
-    padding: 24px;
-    overflow-y: auto;
-    transform: translateX(100%);
-    transition: transform .25s;
-    z-index: 100;
-  }
-  .detail-panel.open { transform: translateX(0); }
-  .detail-close {
-    position: absolute; top: 16px; right: 16px;
-    background: #2d3748; border: none; color: #e2e8f0;
-    width: 28px; height: 28px; border-radius: 50%;
-    cursor: pointer; font-size: 1rem;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .detail-close:hover { background: #4a5568; }
-  .detail-name { font-size: 1rem; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; }
-  .detail-type { font-size: .7rem; color: #718096; margin-bottom: 16px; }
-  .detail-section { margin-bottom: 16px; }
-  .detail-section h4 { font-size: .7rem; text-transform: uppercase; letter-spacing: .8px; color: #4a5568; margin-bottom: 6px; }
-  .tool-chip {
-    display: inline-block;
-    background: #2d3748;
-    color: #a0aec0;
-    font-size: .68rem;
-    padding: 3px 8px;
-    border-radius: 4px;
-    margin: 2px;
-    font-family: monospace;
-  }
-  .detail-text { font-size: .75rem; color: #a0aec0; line-height: 1.6; }
-  .arrow-chip {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    font-size: .73rem;
-    color: #a0aec0;
-    line-height: 1.5;
-    margin-bottom: 6px;
-  }
-  .arrow-chip .icon { color: #4299e1; flex-shrink: 0; }
-
-  /* legend */
-  .legend {
-    display: flex; flex-wrap: wrap; gap: 10px;
-    padding: 16px 32px;
-    border-top: 1px solid #1a202c;
-  }
-  .legend-item {
-    display: flex; align-items: center; gap: 6px;
-    font-size: .68rem; color: #718096;
-  }
-  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
-
-  .flow-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0;
-    padding-bottom: 40px;
-  }
-
-  .step-row {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    width: 100%;
-  }
-  .step-num {
-    width: 120px;
-    min-width: 120px;
-    text-align: right;
-    padding-right: 16px;
-    font-size: .65rem;
-    font-weight: 700;
-    color: #4a5568;
-    text-transform: uppercase;
-    letter-spacing: .8px;
-  }
-  .step-content {
-    border-left: 2px solid #2d3748;
-    padding: 10px 0 10px 20px;
-    flex: 1;
-  }
-  .between-row {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    width: 100%;
-  }
-  .between-spacer { width: 120px; min-width: 120px; }
-  .between-line {
-    border-left: 2px solid #4a5568;
-    padding-left: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-  }
-  .pass-label {
-    font-size: .63rem;
-    color: #c05621;
-    padding: 3px 8px;
-    background: #1a150f;
-    border: 1px solid #c05621;
-    border-radius: 4px;
-    display: inline-block;
-    margin: 2px 0;
-  }
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
+header{background:linear-gradient(135deg,#1a1f2e,#16213e);border-bottom:1px solid #2d3748;padding:18px 28px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+header h1{font-size:1.3rem;font-weight:700;color:#63b3ed}
+header p{font-size:.75rem;color:#718096;margin-top:2px}
+.tab-bar{display:flex;gap:8px}
+.tab{padding:7px 18px;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer;border:1px solid #2d3748;background:#1a202c;color:#718096;transition:all .2s}
+.tab.active{background:#2b6cb0;border-color:#2b6cb0;color:#fff}
+.tab:hover:not(.active){border-color:#4a5568;color:#a0aec0}
+.canvas{padding:24px 28px;overflow-x:auto}
+.pipeline{display:none}
+.pipeline.active{display:block}
+.flow-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:0;padding-bottom:48px}
+.step-row{display:flex;align-items:flex-start;gap:0;width:100%}
+.step-num{width:128px;min-width:128px;text-align:right;padding-right:14px;font-size:.62rem;font-weight:700;color:#4a5568;text-transform:uppercase;letter-spacing:.9px;padding-top:18px;line-height:1.5}
+.step-content{border-left:2px solid #2d3748;padding:10px 0 10px 18px;flex:1}
+.between-row{display:flex;align-items:flex-start;gap:0;width:100%}
+.between-spacer{width:128px;min-width:128px}
+.between-line{border-left:2px solid #4a5568;padding-left:18px;display:flex;flex-direction:column;gap:3px;padding-top:4px;padding-bottom:4px}
+.node{background:#1a202c;border:1.5px solid #2d3748;border-radius:10px;padding:11px 13px;min-width:180px;max-width:240px;cursor:pointer;transition:all .18s;position:relative;display:inline-block}
+.node:hover{border-color:#4299e1;transform:translateY(-2px);box-shadow:0 4px 18px rgba(66,153,225,.2)}
+.node.selected{border-color:#4299e1;box-shadow:0 0 0 2px rgba(66,153,225,.3)}
+.node-title{font-size:.77rem;font-weight:700;color:#e2e8f0;margin-bottom:3px}
+.node-sub{font-size:.65rem;color:#718096;line-height:1.4}
+.node-badge{display:inline-block;font-size:.58rem;font-weight:700;padding:2px 7px;border-radius:20px;margin-top:5px}
+.badge-data{background:#1c4532;color:#68d391}
+.badge-analyst{background:#1a365d;color:#63b3ed}
+.badge-quant{background:#322659;color:#b794f4}
+.badge-review{background:#7b341e;color:#fc8181}
+.badge-report{background:#234e52;color:#4fd1c5}
+.badge-orch{background:#2d3748;color:#ecc94b}
+.badge-python{background:#2d2d00;color:#d4a017}
+.badge-warn{background:#3d2200;color:#f6ad55}
+.fix-badge{background:#3d0000;border:1px solid #fc8181;color:#fc8181;font-size:.57rem;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:5px;vertical-align:middle}
+.pass-label{font-size:.61rem;padding:2px 8px;border-radius:4px;display:inline-block;margin:2px 0;line-height:1.5}
+.pass-blue{border:1px solid #2b6cb0;color:#63b3ed;background:#111827}
+.pass-orange{border:1px solid #c05621;color:#fc8181;background:#1a150f}
+.pass-teal{border:1px solid #4fd1c5;color:#4fd1c5;background:#0d1f1e}
+.pass-yellow{border:1px solid #d4a017;color:#d4a017;background:#1a1500}
+.parallel-block{background:#101520;border:1.5px dashed #2b6cb0;border-radius:12px;padding:12px 14px;margin:2px 0}
+.parallel-title{font-size:.62rem;font-weight:700;color:#4299e1;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
+.parallel-nodes{display:flex;flex-wrap:wrap;gap:10px}
+.retry-block{background:#13120a;border:1.5px dashed #d4a017;border-radius:10px;padding:12px 14px;margin:2px 0;position:relative}
+.retry-label-tag{position:absolute;top:-10px;left:14px;background:#d4a017;color:#000;font-size:.58rem;font-weight:700;padding:2px 9px;border-radius:20px;text-transform:uppercase;letter-spacing:.8px}
+.retry-inner{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+.retry-note{font-size:.64rem;color:#a0895a;margin-top:8px;line-height:1.5}
+.loop-block{border:2px solid #c05621;border-radius:12px;padding:14px;margin:2px 0;position:relative;background:#1a150f}
+.loop-label-tag{position:absolute;top:-11px;left:14px;background:#c05621;color:#fff;font-size:.62rem;font-weight:700;padding:2px 10px;border-radius:20px;text-transform:uppercase;letter-spacing:.8px}
+.loop-nodes{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:flex-start}
+.loop-arrow-note{font-size:.63rem;color:#c05621;margin-top:8px;display:flex;gap:6px;align-items:flex-start}
+.detail-panel{position:fixed;right:0;top:0;bottom:0;width:370px;background:#1a1f2e;border-left:1px solid #2d3748;padding:22px;overflow-y:auto;transform:translateX(100%);transition:transform .22s;z-index:100}
+.detail-panel.open{transform:translateX(0)}
+.detail-close{position:absolute;top:14px;right:14px;background:#2d3748;border:none;color:#e2e8f0;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center}
+.detail-close:hover{background:#4a5568}
+.detail-name{font-size:.97rem;font-weight:700;color:#e2e8f0;margin-bottom:3px}
+.detail-type{font-size:.68rem;color:#718096;margin-bottom:14px}
+.detail-section{margin-bottom:14px}
+.detail-section h4{font-size:.65rem;text-transform:uppercase;letter-spacing:.8px;color:#4a5568;margin-bottom:5px}
+.tool-chip{display:inline-block;background:#2d3748;color:#a0aec0;font-size:.65rem;padding:2px 7px;border-radius:4px;margin:2px;font-family:monospace}
+.detail-text{font-size:.73rem;color:#a0aec0;line-height:1.6}
+.arrow-chip{display:flex;align-items:flex-start;gap:7px;font-size:.71rem;color:#a0aec0;line-height:1.5;margin-bottom:5px}
+.arrow-chip .icon{flex-shrink:0}
+.legend{display:flex;flex-wrap:wrap;gap:10px;padding:14px 28px;border-top:1px solid #1a202c}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:.66rem;color:#718096}
+.legend-dot{width:10px;height:10px;border-radius:50%}
+.legend-rect{width:10px;height:10px;border-radius:2px;flex-shrink:0}
 </style>
 </head>
 <body>
 
 <header>
   <div>
-    <h1>FinResearchAgent — Agent Pipeline Flow</h1>
-    <p>Google ADK · Gemini 2.5 Flash · Cloud Run · Click any agent for details</p>
+    <h1>FinResearchAgent — Pipeline Flow <span style="font-size:.7rem;color:#f6ad55;background:#2d1500;padding:2px 8px;border-radius:4px;vertical-align:middle;margin-left:8px">v2 · corrected</span></h1>
+    <p>Google ADK · Vertex AI · Cloud Run · Click any agent for tools + data handoffs · Red badges = corrections from v1</p>
   </div>
   <div class="tab-bar">
-    <div class="tab active" onclick="switchTab('equity')">📈 Equity Pipeline</div>
-    <div class="tab" onclick="switchTab('macro')">🌐 Macro Pipeline</div>
+    <div class="tab active" onclick="switchTab('equity',this)">📈 Equity Pipeline</div>
+    <div class="tab" onclick="switchTab('macro',this)">🌐 Macro Pipeline</div>
   </div>
 </header>
 
-<!-- ══════════════ EQUITY PIPELINE ══════════════ -->
 <div class="canvas">
+
+<!-- ════════════ EQUITY ════════════ -->
 <div id="equity" class="pipeline active">
 <div class="flow-wrap">
 
-  <!-- STEP 1a -->
   <div class="step-row">
-    <div class="step-num">Step 1a<br/>Python</div>
+    <div class="step-num">Step 1a<br/>Python<br/>≤2 min</div>
     <div class="step-content">
-      <div class="node" onclick="showDetail('gather_structured')">
+      <div class="node" onclick="showDetail('gather_eq')">
         <div class="node-title">_gather_structured_data()</div>
-        <div class="node-sub">18 parallel API calls via ThreadPoolExecutor (20 workers)<br/>+ 6 parallel SEC EDGAR calls</div>
-        <span class="node-badge badge-python">Python · No ADK</span>
+        <div class="node-sub">Group 1: 6 Finnhub + 5 FMP + 3 AV + 3 Polygon (parallel, 20 workers)<br/>Group 2: 6 SEC EDGAR calls (parallel, 20s timeout each)<br/>Group 3: NewsAPI company news + OpenFIGI mapping <span class="fix-badge">added</span></div>
+        <span class="node-badge badge-python">Python · ThreadPoolExecutor · No ADK · Hard 120s timeout</span>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#2b6cb0;color:#63b3ed;background:#1a1f2e;">↓ raw_data dict (prices, financials, filings, metrics, earnings, news)</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-blue">↓ structured_data (~22 sources): prices · financials · filings · metrics · earnings · news · FIGI</span></div></div>
 
-  <!-- STEP 1b -->
   <div class="step-row">
-    <div class="step-num">Step 1b<br/>ADK Agent</div>
+    <div class="step-num">Step 1b<br/>Optional<br/>≤5 min</div>
     <div class="step-content">
-      <div class="node" onclick="showDetail('data_harvester')">
-        <div class="node-title">data_harvester</div>
-        <div class="node-sub">Web search · Coverage log</div>
-        <span class="node-badge badge-data">Data Gathering</span>
+      <div class="node" onclick="showDetail('ctx_eq')">
+        <div class="node-title">context_processor <span class="fix-badge">runs BEFORE harvester</span></div>
+        <div class="node-sub">Runs FIRST. Identifies data gaps from user focus. Returns Enriched Context Note + Data Harvester Guidance (what to search for)</div>
+        <span class="node-badge badge-data">Tier 3 Flash · HAS live tools <span class="fix-badge">corrected</span> · Skipped if no user notes</span>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#2b6cb0;color:#63b3ed;background:#1a1f2e;">↓ web_results + coverage_log (analyst ratings, news, earnings transcripts)</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-blue">↓ enriched_context_note + Data Harvester Guidance → data_harvester</span></div></div>
 
-  <!-- STEP 1c -->
   <div class="step-row">
-    <div class="step-num">Step 1c<br/>Optional</div>
+    <div class="step-num">Step 1c<br/>ADK Agent<br/>≤12 min</div>
     <div class="step-content">
-      <div class="node" onclick="showDetail('context_processor')">
-        <div class="node-title">context_processor</div>
-        <div class="node-sub">Enriches user context notes (only if user provides notes)</div>
-        <span class="node-badge badge-data">Context</span>
+      <div class="node" onclick="showDetail('harvester_eq')">
+        <div class="node-title">data_harvester <span class="fix-badge">runs AFTER context</span></div>
+        <div class="node-sub">Reads Guidance from context_processor. Web search + Coverage Log. Stops when ≥10 news + ≥5 academic + ≥5 competitor sources found.</div>
+        <span class="node-badge badge-data">Tier 3 Flash · Timeout 720s</span>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#2b6cb0;color:#63b3ed;background:#1a1f2e;">↓ enriched_context (optional) + all prior data → routed per-section to parallel agents</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-blue">↓ web_results + coverage_log + source_discrepancies → sliced per-analyst</span></div></div>
 
-  <!-- STEP 2 PARALLEL -->
   <div class="step-row">
-    <div class="step-num">Step 2<br/>Parallel ×6</div>
+    <div class="step-num">Step 2<br/>Parallel ×6<br/>~5–12 min</div>
     <div class="step-content">
       <div class="parallel-block">
-        <div class="parallel-title">⚡ 6 Analysts run concurrently (semaphore: 3 Vertex AI calls)</div>
+        <div class="parallel-title">⚡ 6 analysts run via asyncio.gather — each gets only its relevant data slice (40–70% token reduction) · semaphore limits concurrent Vertex AI calls</div>
         <div class="parallel-nodes">
-          <div class="node" onclick="showDetail('fundamental_market')">
+          <div class="node" onclick="showDetail('fa_market')">
             <div class="node-title">fundamental_analyst_market</div>
-            <div class="node-sub">Sections 1–2<br/>Investment thesis · Market sizing</div>
-            <span class="node-badge badge-analyst">Tier 3</span>
+            <div class="node-sub">Sections 1–2 · Investment Thesis · Market Sizing (TAM/SAM/SOM)</div>
+            <span class="node-badge badge-analyst">Tier 3 Flash · HAS live tools <span class="fix-badge">corrected</span></span>
           </div>
-          <div class="node" onclick="showDetail('fundamental_financials')">
+          <div class="node" onclick="showDetail('fa_fin')">
             <div class="node-title">fundamental_analyst_financials</div>
-            <div class="node-sub">Sections 9, 11–13<br/>Income · Balance · Cash Flow</div>
-            <span class="node-badge badge-analyst">Tier 3</span>
+            <div class="node-sub">Sections 9, 11–13 · Monetisation · Unit Economics · Financials · Capital Structure</div>
+            <span class="node-badge badge-analyst">Tier 3 Flash · HAS live tools <span class="fix-badge">corrected</span></span>
           </div>
-          <div class="node" onclick="showDetail('competitive_analyst')">
+          <div class="node" onclick="showDetail('competitive')">
             <div class="node-title">competitive_analyst</div>
-            <div class="node-sub">Sections 3–8<br/>Customers · Product · Competition · GTM</div>
-            <span class="node-badge badge-analyst">Tier 3</span>
+            <div class="node-sub">Sections 3–8 · Customers · Product · Competition · GTM</div>
+            <span class="node-badge badge-analyst">Tier 3 Flash · HAS live tools <span class="fix-badge">corrected</span></span>
           </div>
-          <div class="node" onclick="showDetail('risk_analyst')">
+          <div class="node" onclick="showDetail('risk')">
             <div class="node-title">risk_analyst</div>
-            <div class="node-sub">Sections 14–19<br/>Moat · Risks · M&amp;A</div>
-            <span class="node-badge badge-analyst">Tier 3</span>
+            <div class="node-sub">Sections 14–19 · Moat · Risks · M&amp;A</div>
+            <span class="node-badge badge-analyst">Tier 3 Flash · HAS live tools <span class="fix-badge">corrected</span></span>
           </div>
-          <div class="node" onclick="showDetail('valuation_analyst')">
+          <div class="node" onclick="showDetail('valuation')">
             <div class="node-title">valuation_analyst</div>
-            <div class="node-sub">Sections 20–21<br/>DCF · Comps · Quality Scorecard</div>
-            <span class="node-badge badge-analyst">Tier 2</span>
+            <div class="node-sub">Sections 20–21 · DCF · Comps · Quality Scorecard · Decision Gate</div>
+            <span class="node-badge badge-analyst">Tier 2 Pro · HAS live tools <span class="fix-badge">corrected</span> · max 32768 tokens</span>
           </div>
-          <div class="node" onclick="showDetail('earnings_quality')">
+          <div class="node" onclick="showDetail('eq_quality')">
             <div class="node-title">earnings_quality_agent</div>
-            <div class="node-sub">Forensic accounting<br/>GAAP vs non-GAAP · Accruals · SBC</div>
-            <span class="node-badge badge-analyst">Tier 2</span>
+            <div class="node-sub">Forensic accounting · GAAP vs non-GAAP · Accruals · Insider transactions</div>
+            <span class="node-badge badge-analyst">Tier 3 Flash <span class="fix-badge">was Tier 2 — corrected</span></span>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#2b6cb0;color:#63b3ed;background:#1a1f2e;">↓ 6 section drafts (Sections 1–21) merged into structured draft</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-yellow">↓ check each output for placeholders → if any failed, enter analyst retry loop</span></div></div>
 
-  <!-- STEP 3 -->
   <div class="step-row">
-    <div class="step-num">Step 3<br/>Quant</div>
+    <div class="step-num">Step 2<br/>Retry<br/>≤3 rounds<br/><span class="fix-badge" style="margin-left:0">new</span></div>
     <div class="step-content">
-      <div class="node" onclick="showDetail('quant_equity')">
-        <div class="node-title">quant_modeler_equity</div>
-        <div class="node-sub">Technical indicators · Beta · VaR · Volatility · Drawdown</div>
-        <span class="node-badge badge-quant">Tier 3 · Timeout 480s</span>
+      <div class="retry-block">
+        <div class="retry-label-tag">🔁 Analyst Retry — up to max_analyst_retries rounds (default 3)</div>
+        <div class="retry-inner">
+          <div class="node" style="border-color:#d4a017" onclick="showDetail('analyst_retry')">
+            <div class="node-title">Failed analyst(s) re-run individually</div>
+            <div class="node-sub">_is_placeholder() checks each of 6 outputs. Only failed slots are retried — non-failed analysts are NOT re-invoked.</div>
+            <span class="node-badge badge-warn">Skipped entirely if all 6 pass</span>
+          </div>
+        </div>
+        <div class="retry-note">🔁 Repeats up to 3 rounds → proceeds to Step 3 regardless of remaining failures</div>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#2b6cb0;color:#63b3ed;background:#1a1f2e;">↓ quant_output (RSI, MACD, Bollinger, beta, VaR, volatility tables)</div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-blue">↓ 6 section drafts (Sections 1–21) → quant_modeler_equity</span></div></div>
+
+  <div class="step-row">
+    <div class="step-num">Step 3<br/>Quant<br/>≤8 min</div>
+    <div class="step-content">
+      <div class="node" onclick="showDetail('quant_eq')">
+        <div class="node-title">quant_modeler_equity</div>
+        <div class="node-sub">Technical indicators · Beta · VaR · Volatility · Drawdown · Earnings calendar · FRED macro factor correlations · max_output_tokens 32768</div>
+        <span class="node-badge badge-quant">Tier 3 Flash · Timeout 480s · 2 tools missing from v1</span>
+      </div>
     </div>
   </div>
 
-  <!-- STEP 4 -->
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-blue">↓ quant_output: RSI · MACD · Bollinger · ATR · beta · VaR · drawdown · skew tables</span></div></div>
+
   <div class="step-row">
     <div class="step-num">Step 4<br/>Compile</div>
     <div class="step-content">
-      <div class="node" onclick="showDetail('report_compiler')">
+      <div class="node" onclick="showDetail('compiler_eq')">
         <div class="node-title">report_compiler</div>
-        <div class="node-sub">Assembles all 21 sections into full draft memo</div>
-        <span class="node-badge badge-report">Tier 3</span>
+        <div class="node-sub">Assembles all 21 sections. Calls save_report to GCS. max_output_tokens 65536</div>
+        <span class="node-badge badge-report">MODEL_TIER_COMPILER (Pro default) <span class="fix-badge">was Tier 3 — corrected</span></span>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#c05621;color:#fc8181;background:#1a150f;">↓ compiled_draft → enters review loop</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-orange">↓ compiled_draft → enters review loop</span></div></div>
 
-  <!-- STEP 5 REVIEW LOOP -->
   <div class="step-row">
-    <div class="step-num">Step 5<br/>Review Loop<br/>≤ 3 passes</div>
+    <div class="step-num">Step 5<br/>Review Loop<br/>≤3 passes</div>
     <div class="step-content">
       <div class="loop-block">
-        <div class="loop-label">🔄 Review Loop — max 3 passes</div>
+        <div class="loop-label-tag">🔄 Review Loop — max_passes (default 3) · both PASS = early exit</div>
         <div class="loop-nodes">
           <div class="node" onclick="showDetail('fact_checker')">
             <div class="node-title">fact_checker</div>
-            <div class="node-sub">Checks data accuracy · Flags inconsistencies · Verifies numbers</div>
-            <span class="node-badge badge-review">Tier 1</span>
+            <div class="node-sub">Fact/Analysis/Inference labels · 60-source gate · Math · Decision gate · Returns PASS or FAIL</div>
+            <span class="node-badge badge-review">Tier 1 Pro · tools=[] (no live calls)</span>
           </div>
-          <div style="display:flex;align-items:center;color:#4a5568;font-size:1.2rem;padding: 0 4px;">‖</div>
+          <div style="display:flex;align-items:center;color:#4a5568;font-size:.72rem;padding:0 4px">‖ parallel</div>
           <div class="node" onclick="showDetail('review_agent')">
             <div class="node-title">review_agent</div>
-            <div class="node-sub">Checks narrative quality · Logic · Structure · Completeness</div>
-            <span class="node-badge badge-review">Tier 1</span>
+            <div class="node-sub">Coherence · Consistency · Exec summary alignment · Rating logic · Returns PASS or FAIL</div>
+            <span class="node-badge badge-review">Tier 1 Pro · tools=[] (no live calls)</span>
           </div>
-          <div style="display:flex;align-items:center;color:#4a5568;font-size:.75rem;padding:0 4px;">run in parallel each pass</div>
-          <div style="width:100%;margin-top:10px;border-top:1px dashed #2d3748;padding-top:10px;">
-            <div class="node" onclick="showDetail('report_compiler')">
+          <div style="width:100%;margin-top:10px;border-top:1px dashed #2d3748;padding-top:10px">
+            <div class="node" onclick="showDetail('compiler_eq')">
               <div class="node-title">report_compiler (revision)</div>
-              <div class="node-sub">Receives fact_checker + review_agent feedback → rewrites flagged sections</div>
-              <span class="node-badge badge-report">Loops back if issues found</span>
+              <div class="node-sub">Receives both feedback sets → rewrites flagged sections → loops if still FAIL</div>
+              <span class="node-badge badge-report">Loops until both PASS or max_passes hit</span>
             </div>
           </div>
         </div>
-        <div class="loop-arrow">
-          <span>🔁</span>
-          <span>fact_checker + review_agent → report_compiler → repeat up to 3× until clean or max passes reached</span>
-        </div>
+        <div class="loop-arrow-note"><span>🔁</span><span>fact_checker ∥ review_agent → both PASS? → exit early · still FAIL? → report_compiler revises → repeat (max 3 total passes)</span></div>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#2b6cb0;color:#63b3ed;background:#1a1f2e;">↓ reviewed_draft (all 21 sections, fact-checked)</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-blue">↓ reviewed_draft (all 21 sections, fact-checked)</span></div></div>
 
-  <!-- STEP 6 -->
   <div class="step-row">
-    <div class="step-num">Step 6<br/>Orchestrator</div>
+    <div class="step-num">Step 6<br/>Exec Summary</div>
     <div class="step-content">
-      <div class="node" onclick="showDetail('research_orchestrator')">
+      <div class="node" onclick="showDetail('orch')">
         <div class="node-title">research_orchestrator</div>
-        <div class="node-sub">Writes Executive Summary last · Sets Buy/Hold/Sell · Quality Score threshold check</div>
-        <span class="node-badge badge-orch">Tier 1 · Final</span>
+        <div class="node-sub">Writes Executive Summary last (full context). Sets Buy/Hold/Sell + Quality Score check. Python handles all file I/O.</div>
+        <span class="node-badge badge-orch">Tier 1 Pro · tools=[] <span class="fix-badge">had wrong tools in v1</span></span>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#4fd1c5;color:#4fd1c5;background:#0d1f1e;">↓ final_report → saved to GCS + debug .md</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-teal">↓ final_report text → Python: save_report + save_run_metadata + save_debug_report + save_latex_report → GCS</span></div></div>
 
-  <!-- OUTPUT -->
   <div class="step-row">
-    <div class="step-num">Output<br/>GCS</div>
+    <div class="step-num">Output · GCS</div>
     <div class="step-content">
-      <div class="node" style="border-color:#4fd1c5;">
+      <div class="node" style="border-color:#4fd1c5;cursor:default">
         <div class="node-title">📄 21-Section Equity Memo</div>
-        <div class="node-sub">Buy/Hold/Sell · Price target · Quality scorecard · Saved to gs://report-storage-6960/</div>
-        <span class="node-badge badge-report">Report Output</span>
+        <div class="node-sub">Buy/Hold/Sell · Price target · Quality Scorecard · gs://{bucket}/ · debug/{run_id}.md</div>
+        <span class="node-badge badge-report">Final Output</span>
       </div>
     </div>
   </div>
@@ -557,210 +287,178 @@
 </div>
 </div>
 
-<!-- ══════════════ MACRO PIPELINE ══════════════ -->
+<!-- ════════════ MACRO ════════════ -->
 <div id="macro" class="pipeline">
 <div class="flow-wrap">
 
-  <!-- STEP 1a -->
   <div class="step-row">
-    <div class="step-num">Step 1a<br/>Python</div>
+    <div class="step-num">Step 1a<br/>Python<br/>Parallel</div>
     <div class="step-content">
       <div class="node" onclick="showDetail('gather_macro')">
-        <div class="node-title">_gather_macro_data()</div>
-        <div class="node-sub">FRED yield curve snapshot · Recession indicators (Python, no ADK)</div>
-        <span class="node-badge badge-python">Python · No ADK</span>
+        <div class="node-title">_gather_macro_data() <span class="fix-badge">massively expanded</span></div>
+        <div class="node-sub">
+          FRED: yield curve · recession indicators · FX rates (10 pairs) · commodities · PMI · credit spreads<br/>
+          WorldBank: GDP/inflation/unemployment/trade (10 economies)<br/>
+          OECD: CLI (20 countries) + Economic Outlook projections<br/>
+          IMF WEO: GDP · inflation · unemployment · current account<br/>
+          ECB: deposit rate · HICP · M3 money supply<br/>
+          Alpha Vantage: WTI · Brent · gas · copper · wheat · corn<br/>
+          Polygon: 11 FX pair snapshots<br/>
+          NewsAPI: topic-specific news (conditional on topic)
+        </div>
+        <span class="node-badge badge-python">Python · ThreadPoolExecutor · No ADK · ~9+ parallel calls</span>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#2b6cb0;color:#63b3ed;background:#1a1f2e;">↓ macro_raw (yield curve, spread, recession indicator values)</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-blue">↓ macro_raw dict: yield curve · recession indicators · global macro · commodities · FX · news</span></div></div>
 
-  <!-- STEP 1b -->
   <div class="step-row">
-    <div class="step-num">Step 1b<br/>ADK Agent</div>
+    <div class="step-num">Step 1b<br/>ADK Agent<br/>≤9 min</div>
     <div class="step-content">
       <div class="node" onclick="showDetail('macro_data_agent')">
         <div class="node-title">macro_data_agent</div>
-        <div class="node-sub">Topic-specific FRED series · Web search · Academic papers · Source log</div>
-        <span class="node-badge badge-data">Timeout 720s</span>
+        <div class="node-sub">Topic-specific FRED series · Web + news search · Academic papers (CORE API — no Vertex quota). Builds full source_log with metadata</div>
+        <span class="node-badge badge-data">Tier 3 Flash · Timeout 540s</span>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#2b6cb0;color:#63b3ed;background:#1a1f2e;">↓ macro_data + source_log (FRED series, web results, academic papers)</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-blue">↓ macro_data + source_log (FRED series · web results · academic papers + metadata)</span></div></div>
 
-  <!-- STEP 1c -->
   <div class="step-row">
-    <div class="step-num">Step 1c<br/>Validator</div>
+    <div class="step-num">Step 1c<br/>Validator<br/>≤5 min</div>
     <div class="step-content">
       <div class="node" onclick="showDetail('macro_source_validator')">
         <div class="node-title">macro_source_validator</div>
-        <div class="node-sub">Validates source geography/theme fit · Flags mismatches · Fills data gaps</div>
-        <span class="node-badge badge-data">Data QA</span>
+        <div class="node-sub">Validates source geography + theme fit. Gap-fill searches (CORE + web). Flags mismatches.</div>
+        <span class="node-badge badge-data">Tier 3 Flash · Timeout 300s</span>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#2b6cb0;color:#63b3ed;background:#1a1f2e;">↓ validated_data + gap_fill_notes</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-blue">↓ validated_data + gap_fill_additions + flagged_mismatches</span></div></div>
 
-  <!-- STEP 1d -->
   <div class="step-row">
-    <div class="step-num">Step 1d<br/>Optional</div>
+    <div class="step-num">Step 1d<br/>Optional<br/>≤5 min</div>
     <div class="step-content">
-      <div class="node" onclick="showDetail('context_processor')">
+      <div class="node" onclick="showDetail('ctx_macro')">
         <div class="node-title">context_processor</div>
-        <div class="node-sub">Enriches user context notes (only if provided)</div>
-        <span class="node-badge badge-data">Context</span>
+        <div class="node-sub">Only runs if user provides context notes. Identifies macro gaps, fetches targeted info, returns Enriched Context Note.</div>
+        <span class="node-badge badge-data">Tier 3 Flash · HAS live tools <span class="fix-badge">corrected</span></span>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#2b6cb0;color:#63b3ed;background:#1a1f2e;">↓ all data + enriched context → macro_analyst</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-blue">↓ all validated macro data + enriched_context (if any) → macro_analyst</span></div></div>
 
-  <!-- STEP 2 -->
   <div class="step-row">
-    <div class="step-num">Step 2<br/>Analyst</div>
+    <div class="step-num">Step 2<br/>Analyst<br/>≤8 min</div>
     <div class="step-content">
       <div class="node" onclick="showDetail('macro_analyst')">
         <div class="node-title">macro_analyst</div>
-        <div class="node-sub">8-section macro report · Incl. Literature Review (Section 8)</div>
-        <span class="node-badge badge-analyst">Tier 3 · Timeout 480s</span>
+        <div class="node-sub">Single agent writes all 8 sections incl. Literature Review (Sec 8). Geography-aware. max_output_tokens 32768.</div>
+        <span class="node-badge badge-analyst">Tier 3 Flash · Timeout 480s · HAS live tools <span class="fix-badge">corrected</span></span>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#2b6cb0;color:#63b3ed;background:#1a1f2e;">↓ macro_draft (8 sections + Literature Review)</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-blue">↓ macro_draft (8 sections + Literature Review)</span></div></div>
 
-  <!-- STEP 3 -->
   <div class="step-row">
-    <div class="step-num">Step 3<br/>Quant</div>
+    <div class="step-num">Step 3<br/>Quant<br/>≤9 min</div>
     <div class="step-content">
       <div class="node" onclick="showDetail('quant_macro')">
         <div class="node-title">quant_modeler_macro</div>
-        <div class="node-sub">Yield curve analysis · Regression · Time series · Source credibility scores</div>
-        <span class="node-badge badge-quant">Tier 3 · ⚠️ can produce sparse output</span>
+        <div class="node-sub">Yield curve regression · Spread z-scores · Correlations · Historical volatility · Source credibility · max_output_tokens 32768 · ⚠️ can produce sparse output</div>
+        <span class="node-badge badge-quant">Tier 3 Flash · Timeout 540s · 1 tool missing from v1</span>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#2b6cb0;color:#63b3ed;background:#1a1f2e;">↓ quant_appendix (regressions, yield spreads, z-scores, credibility table)</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-blue">↓ quant_appendix: regressions · spreads · z-scores · correlations · volatility · credibility table</span></div></div>
 
-  <!-- STEP 4 -->
   <div class="step-row">
     <div class="step-num">Step 4<br/>Compile</div>
     <div class="step-content">
-      <div class="node" onclick="showDetail('macro_report_compiler')">
+      <div class="node" onclick="showDetail('compiler_macro')">
         <div class="node-title">macro_report_compiler</div>
-        <div class="node-sub">Assembles 8 sections + Quant Appendix + Source Log into full draft</div>
-        <span class="node-badge badge-report">Tier 3</span>
+        <div class="node-sub">Assembles 8 sections + Quant Appendix + Source Log. Calls save_report. max_output_tokens 65536</div>
+        <span class="node-badge badge-report">MODEL_TIER_COMPILER (Pro default) <span class="fix-badge">was Tier 3 — corrected</span></span>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#c05621;color:#fc8181;background:#1a150f;">↓ compiled_draft → enters review loop</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-orange">↓ compiled_draft → enters review loop</span></div></div>
 
-  <!-- STEP 5 REVIEW LOOP -->
   <div class="step-row">
-    <div class="step-num">Step 5<br/>Review Loop<br/>≤ 3 passes</div>
+    <div class="step-num">Step 5<br/>Review Loop<br/>≤3 passes</div>
     <div class="step-content">
       <div class="loop-block">
-        <div class="loop-label">🔄 Review Loop — max 3 passes</div>
+        <div class="loop-label-tag">🔄 Review Loop — max_passes (default 3) · both PASS = early exit</div>
         <div class="loop-nodes">
           <div class="node" onclick="showDetail('fact_checker')">
             <div class="node-title">fact_checker</div>
-            <div class="node-sub">Verifies FRED data accuracy · Cross-checks claims · Flags errors</div>
-            <span class="node-badge badge-review">Tier 1</span>
+            <div class="node-sub">FRED data accuracy · Cross-checks · 60-source gate · Returns PASS or FAIL</div>
+            <span class="node-badge badge-review">Tier 1 Pro · tools=[]</span>
           </div>
-          <div style="display:flex;align-items:center;color:#4a5568;font-size:.75rem;padding:0 4px;">→ then</div>
+          <div style="display:flex;align-items:center;color:#4a5568;font-size:.72rem;padding:0 4px">‖ parallel</div>
           <div class="node" onclick="showDetail('review_agent')">
             <div class="node-title">review_agent</div>
-            <div class="node-sub">Checks narrative · Logical consistency · Source quality · Completeness</div>
-            <span class="node-badge badge-review">Tier 1</span>
+            <div class="node-sub">Narrative · Logic · Source quality · Completeness · Returns PASS or FAIL</div>
+            <span class="node-badge badge-review">Tier 1 Pro · tools=[]</span>
           </div>
-          <div style="width:100%;margin-top:10px;border-top:1px dashed #2d3748;padding-top:10px;">
-            <div class="node" onclick="showDetail('macro_report_compiler')">
+          <div style="width:100%;margin-top:10px;border-top:1px dashed #2d3748;padding-top:10px">
+            <div class="node" onclick="showDetail('compiler_macro')">
               <div class="node-title">macro_report_compiler (revision)</div>
-              <div class="node-sub">Receives both feedback sets → rewrites flagged sections → loops</div>
-              <span class="node-badge badge-report">Loops back if issues found</span>
+              <div class="node-sub">Receives both feedback sets → rewrites flagged sections → loops if still FAIL</div>
+              <span class="node-badge badge-report">Loops until both PASS or max_passes hit</span>
             </div>
           </div>
         </div>
-        <div class="loop-arrow">
-          <span>🔁</span>
-          <span>fact_checker → review_agent → macro_report_compiler → repeat up to 3× until clean</span>
-        </div>
+        <div class="loop-arrow-note"><span>🔁</span><span>fact_checker ∥ review_agent → both PASS? → exit early · still FAIL? → compiler revises → repeat (max 3 passes)</span></div>
       </div>
     </div>
   </div>
 
-  <div class="between-row">
-    <div class="between-spacer"></div>
-    <div class="between-line">
-      <div class="pass-label" style="border-color:#4fd1c5;color:#4fd1c5;background:#0d1f1e;">↓ final_report → saved to GCS + debug .md</div>
-    </div>
-  </div>
+  <div class="between-row"><div class="between-spacer"></div>
+  <div class="between-line"><span class="pass-label pass-teal">↓ final_report → Python: save_report + save_run_metadata + save_debug_report → GCS</span></div></div>
 
-  <!-- OUTPUT -->
   <div class="step-row">
-    <div class="step-num">Output<br/>GCS</div>
+    <div class="step-num">Output · GCS</div>
     <div class="step-content">
-      <div class="node" style="border-color:#4fd1c5;">
+      <div class="node" style="border-color:#4fd1c5;cursor:default">
         <div class="node-title">📄 8-Section Macro Report</div>
-        <div class="node-sub">Literature Review · Quant Appendix · Source Log · Saved to gs://report-storage-6960/</div>
-        <span class="node-badge badge-report">Report Output</span>
+        <div class="node-sub">Literature Review · Quant Appendix · Source Log · gs://{bucket}/ · debug/{run_id}.md</div>
+        <span class="node-badge badge-report">Final Output</span>
       </div>
     </div>
   </div>
 
 </div>
 </div>
-</div>
 
-<!-- Legend -->
+</div><!-- /canvas -->
+
 <div class="legend">
-  <div class="legend-item"><div class="legend-dot" style="background:#68d391"></div> Data / Python</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#63b3ed"></div> Analyst Agent (Tier 2–3)</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#b794f4"></div> Quant Modeler</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#fc8181"></div> Review Agents (Tier 1)</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#4fd1c5"></div> Report Compiler / Output</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#ecc94b"></div> Orchestrator (Tier 1)</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#c05621;border-radius:2px;"></div> 🔄 Review Loop (≤ 3 passes)</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#2b6cb0;border-radius:2px;"></div> ⚡ Parallel Execution</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#d4a017"></div>Python (no ADK)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#68d391"></div>Data / Context Agent (Tier 3 Flash)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#63b3ed"></div>Analyst Agent (Tier 3 Flash or Tier 2 Pro)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#b794f4"></div>Quant Modeler (Tier 3 Flash)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#fc8181"></div>Review Agents (Tier 1 Pro · no tools)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#4fd1c5"></div>Compiler (MODEL_TIER_COMPILER · Pro)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ecc94b"></div>Orchestrator (Tier 1 Pro · no tools)</div>
+  <div class="legend-rect" style="border:2px solid #c05621"></div><div class="legend-item">🔄 Review Loop (≤3 passes)</div>
+  <div class="legend-rect" style="border:1.5px dashed #d4a017"></div><div class="legend-item">🔁 Analyst Retry (≤3 rounds · new)</div>
+  <div class="legend-rect" style="border:1.5px dashed #2b6cb0"></div><div class="legend-item">⚡ Parallel Execution</div>
+  <div class="legend-item"><span class="fix-badge" style="margin-left:0">corrected</span> = fixed from v1</div>
 </div>
 
 <!-- Detail Panel -->
@@ -772,223 +470,55 @@
 </div>
 
 <script>
-const agentData = {
-  gather_structured: {
-    name: "_gather_structured_data()",
-    type: "Python Function · ThreadPoolExecutor (20 workers)",
-    tools: ["finnhub_data.py", "fmp_data.py", "stock_data.py", "polygon_data.py", "sec_filings.py", "http_client.py"],
-    inputs: ["Ticker symbol", "User context"],
-    outputs: ["Quote + 2yr OHLCV", "Income / Balance / Cash Flow statements", "Key metrics & ratios", "Earnings calendar + estimates", "Analyst ratings", "SEC filings + XBRL facts", "Insider transactions", "News feed"],
-    notes: "18 parallel Finnhub/FMP/AV/Polygon calls + 6 SEC EDGAR calls. No ADK — pure Python async. Results stored in raw_data dict."
-  },
-  data_harvester: {
-    name: "data_harvester",
-    type: "ADK Agent · Tier 3 · Timeout 720s",
-    tools: ["search_web", "search_news", "search_earnings_transcript", "search_analyst_reports"],
-    inputs: ["Ticker symbol", "raw_data dict from Step 1a"],
-    outputs: ["Web search results", "Recent news articles", "Earnings transcript excerpts", "Analyst report summaries", "Coverage log (sources found)"],
-    notes: "Web-first agent. Throttled by search.min_interval_seconds (2s prod / 10s free tier). Builds coverage_log of all sources used."
-  },
-  context_processor: {
-    name: "context_processor",
-    type: "ADK Agent · Optional · Runs only if user provides notes",
-    tools: ["(none — prompt-only enrichment)"],
-    inputs: ["User-provided context notes (investment thesis, constraints, focus areas)"],
-    outputs: ["enriched_context: structured interpretation of user intent"],
-    notes: "Skipped entirely if user sends no context. Output prepended to all downstream analyst prompts."
-  },
-  fundamental_market: {
-    name: "fundamental_analyst_market",
-    type: "ADK Agent · Tier 3 · Parallel Step 2",
-    tools: ["(receives pre-fetched data — no live tool calls)"],
-    inputs: ["Sections 1–2 data slice: financials overview, market data, web results"],
-    outputs: ["Section 1: Investment Thesis", "Section 2: Market Sizing & TAM/SAM/SOM"],
-    notes: "Receives only its relevant data slice, not full raw_data. Runs concurrently with 5 other analysts under a semaphore of 3 concurrent Vertex AI calls."
-  },
-  fundamental_financials: {
-    name: "fundamental_analyst_financials",
-    type: "ADK Agent · Tier 3 · Parallel Step 2",
-    tools: ["(receives pre-fetched data — no live tool calls)"],
-    inputs: ["Sections 9, 11–13 data slice: income stmt, balance sheet, cash flow, metrics"],
-    outputs: ["Section 9: Revenue Analysis", "Section 11: Profitability", "Section 12: Balance Sheet Strength", "Section 13: Cash Flow Quality"],
-    notes: "Deep financial statement analysis. Uses FMP + Finnhub data passed in. No live API calls during this step."
-  },
-  competitive_analyst: {
-    name: "competitive_analyst",
-    type: "ADK Agent · Tier 3 · Parallel Step 2",
-    tools: ["(receives pre-fetched data — no live tool calls)"],
-    inputs: ["Sections 3–8 data slice: news, web results, competitor filings"],
-    outputs: ["Section 3: Customer Analysis", "Section 4: Product/Service", "Section 5: Competitive Landscape", "Section 6: GTM Strategy", "Section 7: Management", "Section 8: Industry Dynamics"],
-    notes: "Draws on web search results and news from data_harvester. Structures Porter's Five Forces and competitive moat analysis."
-  },
-  risk_analyst: {
-    name: "risk_analyst",
-    type: "ADK Agent · Tier 3 · Parallel Step 2",
-    tools: ["(receives pre-fetched data — no live tool calls)"],
-    inputs: ["Sections 14–19 data slice: filings, news, risk disclosures"],
-    outputs: ["Section 14: Economic Moat", "Section 15: Regulatory Risk", "Section 16: Operational Risk", "Section 17: Financial Risk", "Section 18: M&A Activity", "Section 19: ESG / Governance"],
-    notes: "Heavily uses SEC EDGAR filings. Cross-references 10-K risk factors with current news."
-  },
-  valuation_analyst: {
-    name: "valuation_analyst",
-    type: "ADK Agent · Tier 2 · Parallel Step 2",
-    tools: ["(receives pre-fetched data — no live tool calls)"],
-    inputs: ["Sections 20–21 data slice: all financial metrics, comps, estimates"],
-    outputs: ["Section 20: Valuation (DCF, EV/EBITDA, P/E, EV/Sales comps)", "Section 21: Investment Conclusion + Quality Scorecard (0–100)"],
-    notes: "Tier 2 (higher capability). Applies Buy hurdle: 30% return, 25% MoS, 1.7× skew. Quality score ≥70 = pass, <60 = sell signal."
-  },
-  earnings_quality: {
-    name: "earnings_quality_agent",
-    type: "ADK Agent · Tier 2 · Parallel Step 2",
-    tools: ["earnings_quality_tools.py: sbc_analysis, gaap_gap_analysis, accruals_analysis, deferred_revenue_check, goodwill_check, debt_analysis"],
-    inputs: ["Full financial statements", "GAAP vs non-GAAP reconciliation data"],
-    outputs: ["Forensic accounting flags", "SBC as % of revenue trend", "Accrual ratio", "Deferred revenue trends", "Goodwill impairment risk", "Debt covenant analysis"],
-    notes: "Tier 2 agent. Runs specialized earnings_quality_tools not available to other analysts."
-  },
-  quant_equity: {
-    name: "quant_modeler_equity",
-    type: "ADK Agent · Tier 3 · Timeout 480s",
-    tools: ["quant_tools.py: rsi, sma, ema, macd, bollinger_bands, atr, historical_volatility, max_drawdown, value_at_risk, beta_calculation, correlation_matrix, skewness_kurtosis, linear_regression"],
-    inputs: ["2yr OHLCV price data", "Market index data for beta", "All analyst section drafts"],
-    outputs: ["RSI / MACD / Bollinger Band tables", "Beta vs S&P 500", "VaR (95th / 99th percentile)", "Historical volatility (annualized)", "Max drawdown", "Skewness & kurtosis"],
-    notes: "All indicators use O(n) incremental calculation. Output appended to report as Quant Section."
-  },
-  quant_macro: {
-    name: "quant_modeler_macro",
-    type: "ADK Agent · Tier 3 · Timeout 480s",
-    tools: ["quant_tools.py: linear_regression, yield_spread, z_score, correlation_matrix", "core_api.py: academic paper search"],
-    inputs: ["FRED yield curve data", "Macro data from macro_data_agent", "macro_analyst draft"],
-    outputs: ["Yield curve regression", "Spread z-scores", "Time series correlation", "Source credibility scores", "Quant Appendix"],
-    notes: "⚠️ Known issue: sometimes produces sparse output (~941 chars) due to context/tool limits. Compiler still runs but quant section may be thin."
-  },
-  report_compiler: {
-    name: "report_compiler",
-    type: "ADK Agent · Tier 3 · Also runs in Review Loop",
-    tools: ["(no tool calls — assembly and writing only)"],
-    inputs: ["6 analyst section drafts (Sections 1–21)", "quant_output", "earnings_quality output"],
-    outputs: ["Full 21-section equity memo draft", "Revised draft on each review loop pass"],
-    notes: "First run: assembles all sections. Review loop runs: receives fact_checker + review_agent feedback and rewrites flagged sections. Loops up to 3×."
-  },
-  fact_checker: {
-    name: "fact_checker",
-    type: "ADK Agent · Tier 1 · Runs in Review Loop",
-    tools: ["(no tool calls — analysis only)"],
-    inputs: ["Compiled report draft", "Original raw_data for cross-reference"],
-    outputs: ["List of factual errors / inconsistencies", "Specific data mismatches flagged with line references", "Pass/fail verdict for each section"],
-    notes: "Tier 1 (highest capability). Runs in parallel with review_agent each loop pass. Focuses on numbers, dates, and data accuracy."
-  },
-  review_agent: {
-    name: "review_agent",
-    type: "ADK Agent · Tier 1 · Runs in Review Loop",
-    tools: ["(no tool calls — analysis only)"],
-    inputs: ["Compiled report draft", "fact_checker output (same pass)"],
-    outputs: ["Narrative quality assessment", "Logic gap flags", "Structure / completeness issues", "Recommended rewrites"],
-    notes: "Tier 1. Runs in parallel with fact_checker. Focuses on investment logic, narrative coherence, and completeness rather than data accuracy."
-  },
-  research_orchestrator: {
-    name: "research_orchestrator",
-    type: "ADK Agent · Tier 1 · Final Step",
-    tools: ["storage.py: save_report, save_run_metadata"],
-    inputs: ["Reviewed full 21-section draft", "Quality Scorecard from valuation_analyst"],
-    outputs: ["Executive Summary (written last for full context)", "Final Buy / Hold / Sell verdict", "Price target range", "Full report saved to GCS"],
-    notes: "Tier 1. Runs last so it has full visibility of all 21 sections. Applies thresholds: Buy requires ≥30% return + 25% MoS + 1.7× skew + Quality ≥70."
-  },
-  gather_macro: {
-    name: "_gather_macro_data()",
-    type: "Python Function · No ADK",
-    tools: ["macro_data.py: fred_series, yield_curve_snapshot, recession_indicators"],
-    inputs: ["FRED API key", "Target macro topic"],
-    outputs: ["Yield curve snapshot (2yr/10yr/30yr)", "Recession probability indicators", "Key FRED series values"],
-    notes: "Pure Python prefetch. Populates macro_raw dict before any ADK agent runs."
-  },
-  macro_data_agent: {
-    name: "macro_data_agent",
-    type: "ADK Agent · Tier 3 · Timeout 720s",
-    tools: ["macro_data.py: fred_series, fred_search", "web_search.py: search_web, search_news, search_academic_papers", "core_api.py: academic paper search"],
-    inputs: ["Macro topic/question", "macro_raw from Step 1a"],
-    outputs: ["Expanded FRED data series", "Web search results", "Academic papers", "News coverage", "Source log (all sources with metadata)"],
-    notes: "Builds comprehensive source_log that feeds into macro_source_validator. Academic papers fetched via CORE API (no Vertex AI quota cost)."
-  },
-  macro_source_validator: {
-    name: "macro_source_validator",
-    type: "ADK Agent · Tier 3",
-    tools: ["web_search.py: search_web (gap-fill only)"],
-    inputs: ["macro_data + source_log from macro_data_agent"],
-    outputs: ["Validated source list (geography + theme confirmed)", "Gap-fill results for missing data", "Flagged mismatched sources"],
-    notes: "Checks each source is geographically relevant to the query and thematically appropriate. Does targeted web searches to fill identified gaps."
-  },
-  macro_analyst: {
-    name: "macro_analyst",
-    type: "ADK Agent · Tier 3 · Timeout 480s",
-    tools: ["(receives pre-fetched data — no live tool calls)"],
-    inputs: ["All validated macro data", "Source log", "enriched_context (if any)"],
-    outputs: ["Section 1: Executive Summary", "Section 2: Current Macro Conditions", "Section 3: Monetary Policy", "Section 4: Fiscal Policy", "Section 5: Global Linkages", "Section 6: Risks & Scenarios", "Section 7: Investment Implications", "Section 8: Literature Review"],
-    notes: "Single agent writes all 8 sections (unlike equity which uses 6 parallel analysts). Literature Review synthesizes academic papers found by macro_data_agent."
-  },
-  macro_report_compiler: {
-    name: "macro_report_compiler",
-    type: "ADK Agent · Tier 3 · Also runs in Review Loop",
-    tools: ["storage.py: save_report"],
-    inputs: ["8-section macro draft", "quant_appendix from quant_modeler_macro", "source_log"],
-    outputs: ["Full macro report: 8 sections + Quant Appendix + Source Log", "Revised versions per review loop pass"],
-    notes: "Assembles final structure. Source Log includes every source with URL, date, relevance score. Loops up to 3× during review."
-  }
+const D={
+  gather_eq:{name:"_gather_structured_data()",type:"Python · ThreadPoolExecutor (20 workers) · 3 sequential groups · Hard 120s total timeout",tools:["get_quote_finnhub","get_historical_prices_finnhub","get_financials_finnhub","get_key_metrics_finnhub","get_earnings_finnhub","get_analyst_ratings_finnhub","get_income_statement_fmp","get_balance_sheet_fmp","get_cash_flow_fmp","get_key_metrics_fmp","get_analyst_estimates_fmp","get_current_price_av (AV)","get_company_overview_av (AV)","get_eps_av (AV)","get_ticker_details_polygon","get_historical_ohlcv_polygon","get_recent_news_polygon","get_recent_filings (SEC EDGAR)","get_company_facts (SEC EDGAR)","get_specific_fact (SEC EDGAR)","get_insider_transactions (SEC EDGAR)","get_company_news_newsapi ✦ADDED","get_figi_mapping / OpenFIGI ✦ADDED"],inputs:["Ticker symbol"],outputs:["~22 structured data sources in one text block","Prices · 2yr OHLCV · income/balance/cash flow (5yr) · key metrics · analyst ratings · earnings history · SEC filings + XBRL facts · insider transactions · NewsAPI company news (30 days, premium outlets) · OpenFIGI instrument mapping"],notes:"Group 3 (NewsAPI + OpenFIGI) runs after groups 1+2 complete, because it needs company_name resolved first (from Polygon/Finnhub). All groups use the same 20-worker ThreadPoolExecutor. Hard 120s timeout on the whole step; on timeout all agents fall back to web search."},
+  ctx_eq:{name:"context_processor",type:"ADK Agent · Tier 3 Flash · Optional · Timeout 300s · RUNS BEFORE Data Harvester (Step 1b)",tools:["search_web","search_news","search_earnings_transcript","search_analyst_reports","search_academic_core (CORE API — no Vertex AI quota cost)"],inputs:["User-provided context notes","Compact source summary (what APIs already gathered)","Ticker + company name"],outputs:["ENRICHED CONTEXT NOTE","Data Harvester Guidance (specific search targets to prioritize)","Gap analysis (what's missing relative to user focus)"],notes:"⚠️ CORRECTION #1: This agent runs FIRST (Step 1b), BEFORE the Data Harvester. Its 'Data Harvester Guidance' section tells the harvester which gaps to search for.\n\n⚠️ CORRECTION #2: This agent HAS live tools (search_web, search_news, etc.). The v1 diagram incorrectly said 'no tools'.\n\nSkipped entirely if user provides no context notes."},
+  harvester_eq:{name:"data_harvester",type:"ADK Agent · Tier 3 Flash · Timeout 720s · RUNS AFTER context_processor (Step 1c)",tools:["search_web","search_news","search_earnings_transcript","search_analyst_reports","search_academic_papers (Semantic Scholar)","search_competitor_filings","search_academic_core (CORE — no Vertex quota)"],inputs:["Company name + ticker","Compact source summary","Enriched Context Note + Data Harvester Guidance (from context_processor if it ran)"],outputs:["Web search results (~20+ sources)","Full Coverage Log (pre-gathered + web sources)","Coverage Validator result","Source Discrepancies table"],notes:"Throttled by search.min_interval_seconds (2s prod / 10s free tier via SEARCH_MIN_INTERVAL env var). Stops early once all three targets are reached: ≥10 news + ≥5 academic + ≥5 competitor."},
+  fa_market:{name:"fundamental_analyst_market",type:"ADK Agent · Tier 3 Flash · Parallel Step 2 · Timeout 360s",tools:["get_income_statement_fmp (segment revenue if needed)","search_web","search_earnings_transcript"],inputs:["Sections 1–2 data slice: market data, overview, web results, coverage log"],outputs:["Section 1: Investment Thesis","Section 2: Market Structure & TAM/SAM/SOM"],notes:"⚠️ CORRECTION: This agent DOES make live API/search calls. Receives only its relevant data slice, not the full ~100KB raw data blob (40–70% token reduction)."},
+  fa_fin:{name:"fundamental_analyst_financials",type:"ADK Agent · Tier 3 Flash · Parallel Step 2 · Timeout 720s",tools:["get_financials_finnhub","get_key_metrics_fmp","get_income_statement_fmp","get_specific_fact (SEC)","get_company_facts (SEC)","search_web","search_earnings_transcript"],inputs:["Sections 9,11–13 data slice: income stmt, balance sheet, cash flow, metrics"],outputs:["Section 9: Monetisation & Pricing","Section 11: Unit Economics","Section 12: Financial Profile","Section 13: Capital Structure"],notes:"⚠️ CORRECTION: API-heavy agent — makes live Finnhub/FMP/SEC calls. Longest timeout of the 6 analysts (720s). The v1 diagram said 'no live tool calls'."},
+  competitive:{name:"competitive_analyst",type:"ADK Agent · Tier 3 Flash · Parallel Step 2 · Timeout 480s",tools:["search_web","search_news","search_competitor_filings","search_analyst_reports","get_recent_filings (SEC)"],inputs:["Sections 3–8 data slice: news, web results, competitor filings"],outputs:["Section 3: Customer Analysis","Section 4: Product/Service","Section 5: Competitive Landscape","Section 6: GTM Strategy","Section 7: Management","Section 8: Industry Dynamics"],notes:"⚠️ CORRECTION: Makes live search + SEC filings calls. The v1 diagram said 'no live tool calls'."},
+  risk:{name:"risk_analyst",type:"ADK Agent · Tier 3 Flash · Parallel Step 2 · Timeout 720s",tools:["search_web","search_news","get_specific_fact (SEC)","get_recent_filings (SEC)","search_analyst_reports"],inputs:["Sections 14–19 data slice: filings, news, risk disclosures"],outputs:["Section 14: Economic Moat","Section 15: Regulatory Risk","Section 16: Operational Risk","Section 17: Financial Risk","Section 18: M&A Activity","Section 19: ESG / Governance"],notes:"⚠️ CORRECTION: Makes live SEC + search calls. Heavily uses 10-K risk factor text. The v1 diagram said 'no live tool calls'."},
+  valuation:{name:"valuation_analyst",type:"ADK Agent · Tier 2 Pro · Parallel Step 2 · Timeout 720s · max_output_tokens 32768",tools:["get_quote_finnhub","get_financials_finnhub","get_key_metrics_fmp","get_historical_prices_finnhub","get_analyst_estimates_fmp","search_web","search_analyst_reports","get_series (FRED — risk-free rate)"],inputs:["Sections 20–21 data slice: all financial metrics, comps, estimates"],outputs:["Section 20: Valuation (DCF, EV/EBITDA, P/E, EV/Sales comps)","Section 21: Investment Conclusion","Quality Scorecard (0–100)"],notes:"⚠️ CORRECTION: Makes many live API calls. The v1 diagram said 'no live tool calls'.\n\nTier 2 (Pro model) for complex DCF modeling. Buy hurdle: ≥30% return + 25% MoS + 1.7× skew. Quality ≥70 = pass, <60 = sell signal."},
+  eq_quality:{name:"earnings_quality_agent",type:"ADK Agent · Tier 3 Flash · Parallel Step 2 · Timeout 360s",tools:["get_sbc_analysis","get_gaap_vs_nongaap_gap","get_accruals_analysis","get_deferred_revenue_trend","get_goodwill_analysis","get_debt_analysis","get_insider_transactions","search_web","search_news","get_recent_filings","get_specific_fact"],inputs:["Full financials + GAAP/non-GAAP reconciliation data"],outputs:["Forensic accounting flags","SBC as % of revenue trend","Accrual ratio","Deferred revenue trends","Goodwill risk score","Debt covenant analysis","Insider transaction patterns"],notes:"⚠️ CORRECTION: This is Tier 3 Flash, NOT Tier 2. The v1 diagram was wrong.\n\nNote: short_interest tool was removed — Yahoo Finance blocks Cloud Run IPs. Agent uses search_web as fallback for short interest data."},
+  analyst_retry:{name:"Analyst Retry Loop",type:"Python logic · post-Step-2 · up to max_analyst_retries rounds (default 3 from config.yaml → retry.max_analyst_retries)",tools:["(same tools as each failed analyst — re-runs agent with same context)"],inputs:["_is_placeholder() check on each of the 6 analyst outputs","Identifies outputs containing timeout/error/empty markers"],outputs:["Fresh outputs for failed analyst slots only","Non-failed slots are NOT touched"],notes:"⚠️ This entire loop was MISSING from v1 of the diagram.\n\nAfter all 6 analysts complete, Python checks each output for placeholder strings. Failed ones are retried individually (targeted, not all 6). Retries up to max_analyst_retries rounds, then proceeds to Step 3 regardless of remaining failures."},
+  quant_eq:{name:"quant_modeler_equity",type:"ADK Agent · Tier 3 Flash · Timeout 480s · max_output_tokens 32768 (3× ADK default — needed for 25K+ token quant dashboards)",tools:["get_historical_prices_finnhub","get_earnings_finnhub ✦(was missing from v1)","get_series FRED ✦(was missing — used for macro factor correlations)","compute_rsi","compute_sma","compute_ema","compute_macd","compute_bollinger_bands","compute_atr","compute_historical_volatility","compute_max_drawdown","compute_var","compute_beta","compute_correlation","compute_skewness_kurtosis"],inputs:["2yr OHLCV price data","Earnings calendar","All 6 analyst section drafts"],outputs:["RSI / MACD / Bollinger Band tables","Beta vs S&P 500","VaR (95th/99th percentile)","Historical volatility (annualized)","Max drawdown","Skewness & kurtosis","Macro factor correlation table"],notes:"All indicators use O(n) incremental calculation. Two tools were missing from v1: get_earnings_finnhub (earnings calendar for quant) and get_series (FRED — used for macro factor correlation analysis)."},
+  compiler_eq:{name:"report_compiler",type:"ADK Agent · MODEL_TIER_COMPILER (defaults to Tier 1 Pro) · max_output_tokens 65536",tools:["save_report (GCS storage) — THIS is what saves the report, not the orchestrator"],inputs:["6 analyst section drafts","quant_output","earnings_quality output","Review feedback (on revision runs within loop)"],outputs:["Full 21-section equity memo draft saved to GCS","Revised versions on each review loop pass"],notes:"⚠️ CORRECTION #1: Uses MODEL_TIER_COMPILER (gemini-2.5-pro by default), NOT Tier 3 Flash.\n\n⚠️ CORRECTION #2: report_compiler calls save_report — not the orchestrator. The v1 diagram listed save_report under the orchestrator, which was wrong.\n\n65536 token ceiling needed: a full 21-section memo is 15K–30K tokens."},
+  fact_checker:{name:"fact_checker",type:"ADK Agent · Tier 1 Pro · Review Loop · tools=[]",tools:["(none — pure reasoning on compiled text, no external calls)"],inputs:["Compiled report draft","Original structured_data for cross-reference"],outputs:["PASS or FAIL verdict","List of factual errors with section references","Data mismatches flagged","60-source coverage gate result","Math consistency check result","Decision gate compliance check"],notes:"Tier 1 (highest capability model). No tools — model reasons entirely on the compiled report and original data. Runs in parallel with review_agent each loop pass. Both must PASS for early exit."},
+  review_agent:{name:"review_agent",type:"ADK Agent · Tier 1 Pro · Review Loop · tools=[]",tools:["(none — pure reasoning on compiled text, no external calls)"],inputs:["Compiled report draft","fact_checker output from same pass"],outputs:["PASS or FAIL verdict","Narrative quality issues","Logic gap list","Exec summary vs body alignment check","Rating logic consistency","Actionability assessment"],notes:"Tier 1. No tools. Focuses on investment logic, narrative coherence, and completeness — NOT raw data accuracy (that's fact_checker's job). Both must PASS to exit the review loop early."},
+  orch:{name:"research_orchestrator",type:"ADK Agent · Tier 1 Pro · Final Step · tools=[]",tools:["(none — tools=[] · all file I/O done by Python in main.py)"],inputs:["Reviewed full 21-section draft","Quality Scorecard from valuation_analyst"],outputs:["Executive Summary (written last for full context)","Final Buy / Hold / Sell verdict with rationale","Price target range"],notes:"⚠️ CORRECTION: tools=[] — the orchestrator has NO tools. The v1 diagram incorrectly listed save_report and save_run_metadata as orchestrator tools.\n\nReport saving is handled by Python (main.py): report_compiler calls save_report, then main.py calls save_run_metadata + save_debug_report + save_latex_report after the orchestrator finishes."},
+  gather_macro:{name:"_gather_macro_data()",type:"Python · ThreadPoolExecutor · No ADK · ~9 always-on + conditional calls",tools:["get_yield_curve_snapshot (FRED)","get_recession_indicators (FRED)","get_worldbank_macro_snapshot (World Bank) ✦NEW","get_oecd_leading_indicators — CLI 20 countries ✦NEW","get_oecd_economic_outlook — GDP projections ✦NEW","get_multiple_series — FRED FX (10 currency pairs) ✦NEW","get_multiple_series — FRED macro (PMI, credit spreads, commodities) ✦NEW","get_commodity_prices_alpha — WTI/Brent/gas/copper/wheat/corn ✦NEW","get_forex_snapshot_polygon — 11 FX pairs ✦NEW","get_worldbank_imf_snapshot — IMF WEO (conditional) ✦NEW","get_ecb_macro_snapshot — rates/HICP/M3 (conditional) ✦NEW","get_topic_news_newsapi (conditional on topic) ✦NEW"],inputs:["Topic (macro question)","Run ID"],outputs:["macro_data dict with ~10–12 labelled sections","Yield curve (3M/2Y/5Y/10Y/30Y) + spreads","Recession probability (T10Y3M, Sahm Rule, UNRATE, etc.)","World Bank 10-economy GDP/inflation/trade snapshot","OECD CLI (20 countries) + growth projections","IMF WEO forecasts","ECB policy rates + HICP + M3","FRED FX rates (10 pairs)","FRED macro: PMI, credit spreads, commodity prices","Alpha Vantage commodities (WTI, Brent, gas, copper, wheat, corn)","Polygon FX snapshot (11 pairs, prev-day close)","NewsAPI topic news (if topic provided)"],notes:"⚠️ CORRECTION: The v1 diagram showed only FRED yield curve + recession indicators for this step. The actual function gathers 10–12 data sources across FRED, World Bank, OECD, IMF, ECB, Alpha Vantage, Polygon, and NewsAPI in parallel."},
+  macro_data_agent:{name:"macro_data_agent",type:"ADK Agent · Tier 3 Flash · Timeout 540s",tools:["get_series (FRED — topic-specific series)","get_multiple_series (FRED — batch)","search_web","search_news","search_academic_papers (Semantic Scholar fallback)","search_academic_core (CORE API — no Vertex quota)"],inputs:["Macro topic/question","macro_raw dict (pre-gathered context from Step 1a)"],outputs:["Expanded topic-specific FRED series","Web search results","Academic papers (via CORE)","News coverage","Source log (all sources with URL + metadata)"],notes:"Note: get_yield_curve_snapshot and get_recession_indicators deliberately removed from this agent's tools — they're already in context from Step 1a, and re-fetching would waste quota and time."},
+  macro_source_validator:{name:"macro_source_validator",type:"ADK Agent · Tier 3 Flash · Timeout 300s",tools:["search_academic_core (primary — no Vertex quota)","search_web","search_news","search_academic_papers (fallback)"],inputs:["macro_data + source_log from macro_data_agent"],outputs:["Validated source list (geography + theme confirmed per source)","Gap-fill search additions (academic, historical analogs, central bank pubs)","Flagged mismatched sources with reason"],notes:"Quality gatekeeper. Each source is checked for geographic and thematic relevance to the query topic. Runs targeted gap-fill searches where coverage is thin."},
+  ctx_macro:{name:"context_processor (macro path)",type:"ADK Agent · Tier 3 Flash · Optional · Timeout 300s",tools:["search_web","search_news","search_earnings_transcript","search_analyst_reports","search_academic_core"],inputs:["User-provided context notes","Compact summary of pre-gathered macro data"],outputs:["Enriched Context Note with macro focus","Gap analysis","Data Harvester Guidance"],notes:"⚠️ CORRECTION: HAS live tools — v1 diagram said 'no tools'. Skipped entirely if user provides no context notes."},
+  macro_analyst:{name:"macro_analyst",type:"ADK Agent · Tier 3 Flash · Timeout 480s · max_output_tokens 32768",tools:["get_series (FRED)","get_multiple_series (FRED)","get_yield_curve_snapshot","get_recession_indicators","search_web","search_news","search_academic_papers","search_academic_core"],inputs:["All validated macro data","Source log","enriched_context (if any)"],outputs:["Section 1: Executive Summary","Section 2: Current Macro Conditions","Section 3: Monetary Policy","Section 4: Fiscal Policy","Section 5: Global Linkages","Section 6: Risks & Scenarios","Section 7: Investment Implications","Section 8: Literature Review (synthesizes academic papers)"],notes:"⚠️ CORRECTION: This agent HAS live tools and CAN call FRED, yield curve, and web search tools even though most data is pre-fetched. Geography-aware — uses topic-specific indicators, not US defaults."},
+  quant_macro:{name:"quant_modeler_macro",type:"ADK Agent · Tier 3 Flash · Timeout 540s · max_output_tokens 32768",tools:["get_series (FRED)","get_multiple_series (FRED)","simple_linear_regression","compute_yield_spread","compute_z_score","compute_correlation","compute_historical_volatility ✦(was missing from v1)"],inputs:["FRED yield curve data","Validated macro data","macro_analyst 8-section draft"],outputs:["Yield curve regression results","Spread z-scores","Time series correlations","Historical volatility metrics","Source credibility score table","Quant Appendix"],notes:"⚠️ CORRECTION: compute_historical_volatility was missing from the v1 tool list.\n\nNote: get_yield_curve_snapshot and get_recession_indicators removed from tool list (pre-fetched in Step 1a).\n\n⚠️ Known issue: sometimes produces sparse ~941 char output at context/tool limits. Compiler still runs but quant section will be thin."},
+  compiler_macro:{name:"macro_report_compiler",type:"ADK Agent · MODEL_TIER_COMPILER (defaults to Tier 1 Pro) · max_output_tokens 65536",tools:["save_report (GCS storage)"],inputs:["8-section macro draft","quant_appendix","source_log","Review feedback (on revision passes within loop)"],outputs:["Full macro report: 8 sections + Quant Appendix + Source Log saved to GCS","Revised versions on each review loop pass"],notes:"⚠️ CORRECTION: Uses MODEL_TIER_COMPILER (gemini-2.5-pro by default), NOT Tier 3 Flash. Source Log includes every source with URL, date, and relevance score."}
 };
 
-function switchTab(tab) {
-  document.querySelectorAll('.pipeline').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById(tab).classList.add('active');
-  event.target.classList.add('active');
-  closeDetail();
-}
-
-function showDetail(id) {
-  const d = agentData[id];
-  if (!d) return;
-  document.getElementById('detailName').textContent = d.name;
-  document.getElementById('detailType').textContent = d.type;
-
-  let html = '';
-
-  if (d.tools && d.tools.length) {
-    html += `<div class="detail-section">
-      <h4>🔧 Tools Used</h4>
-      ${d.tools.map(t => `<span class="tool-chip">${t}</span>`).join('')}
-    </div>`;
-  }
-
-  if (d.inputs && d.inputs.length) {
-    html += `<div class="detail-section">
-      <h4>📥 Receives From Previous</h4>
-      ${d.inputs.map(i => `<div class="arrow-chip"><span class="icon">→</span><span>${i}</span></div>`).join('')}
-    </div>`;
-  }
-
-  if (d.outputs && d.outputs.length) {
-    html += `<div class="detail-section">
-      <h4>📤 Passes to Next</h4>
-      ${d.outputs.map(o => `<div class="arrow-chip"><span class="icon" style="color:#68d391">→</span><span>${o}</span></div>`).join('')}
-    </div>`;
-  }
-
-  if (d.notes) {
-    html += `<div class="detail-section">
-      <h4>📝 Notes</h4>
-      <div class="detail-text">${d.notes}</div>
-    </div>`;
-  }
-
-  document.getElementById('detailBody').innerHTML = html;
+function showDetail(id){
+  const d=D[id];if(!d)return;
+  document.getElementById('detailName').textContent=d.name;
+  document.getElementById('detailType').textContent=d.type;
+  let h='';
+  if(d.tools?.length)h+=`<div class="detail-section"><h4>🔧 Tools Used</h4>${d.tools.map(t=>`<span class="tool-chip">${t}</span>`).join('')}</div>`;
+  if(d.inputs?.length)h+=`<div class="detail-section"><h4>📥 Receives</h4>${d.inputs.map(i=>`<div class="arrow-chip"><span class="icon" style="color:#4299e1">→</span><span>${i}</span></div>`).join('')}</div>`;
+  if(d.outputs?.length)h+=`<div class="detail-section"><h4>📤 Passes On</h4>${d.outputs.map(o=>`<div class="arrow-chip"><span class="icon" style="color:#68d391">→</span><span>${o}</span></div>`).join('')}</div>`;
+  if(d.notes)h+=`<div class="detail-section"><h4>📝 Notes & Corrections</h4><div class="detail-text" style="white-space:pre-line">${d.notes}</div></div>`;
+  document.getElementById('detailBody').innerHTML=h;
   document.getElementById('detailPanel').classList.add('open');
-
-  document.querySelectorAll('.node').forEach(n => n.classList.remove('selected'));
+  document.querySelectorAll('.node').forEach(n=>n.classList.remove('selected'));
   event.currentTarget.classList.add('selected');
 }
-
-function closeDetail() {
+function closeDetail(){
   document.getElementById('detailPanel').classList.remove('open');
-  document.querySelectorAll('.node').forEach(n => n.classList.remove('selected'));
+  document.querySelectorAll('.node').forEach(n=>n.classList.remove('selected'));
+}
+function switchTab(id,el){
+  document.querySelectorAll('.pipeline').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  el.classList.add('active');
+  closeDetail();
 }
 </script>
 </body>

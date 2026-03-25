@@ -31,8 +31,8 @@ Dockerfile           — python:3.11-slim, installs requirements.txt, copies . t
 | Cloud Run region | `us-central1` |
 | Model API region | `global` (required for Gemini 3.x — set via `config.yaml → google_cloud.model_region`) |
 | Service | `fin-research-agent` |
-| Reports bucket | `gs://report-storage-6960/` |
-| Debug reports | `gs://report-storage-6960/debug/{run_id}.md` |
+| Reports bucket | `gs://{REPORTS_BUCKET}/` — set via `config.yaml → google_cloud.reports_bucket` |
+| Debug reports | `gs://{REPORTS_BUCKET}/debug/{run_id}.md` |
 | API keys | GCP Secret Manager (names in `config.yaml → secrets`) |
 
 > **⚠️ Important:** Gemini 3.x models (`gemini-3-flash-preview`, `gemini-3.1-pro-preview`) are only available via `location="global"`. The Cloud Run service itself stays in `us-central1`. `search_web` uses a separate client hardcoded to `us-central1` because `gemini-2.5-flash` (the search model) is regional-only.
