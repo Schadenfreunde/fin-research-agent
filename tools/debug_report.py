@@ -304,11 +304,11 @@ def format_cost_summary(stats: RunStats) -> str:
         "",
         "| Metric | Value |",
         "|---|---|",
-        f"| **Total estimated cost** | **${stats.total_cost_usd:.4f}** |",
+        f"| **Total estimated cost** | **\\${stats.total_cost_usd:.4f}** |",
         f"| Input tokens (all agents) | {stats.total_input_tokens:,} |",
         f"| Output tokens (all agents) | {stats.total_output_tokens:,} |",
         f"| Vertex AI search calls | {stats.total_search_calls} "
-        f"(~${stats.total_search_calls * VERTEX_SEARCH_COST_PER_CALL:.3f}) |",
+        f"(~\\${stats.total_search_calls * VERTEX_SEARCH_COST_PER_CALL:.3f}) |",
         f"| Run ID | `{stats.run_id}` |",
         "",
     ]
@@ -331,10 +331,10 @@ def format_cost_summary(stats: RunStats) -> str:
         for a in sorted(completed, key=lambda x: x.cost_usd, reverse=True):
             model_short = a.model.split("/")[-1] if "/" in a.model else (a.model or "—")
             status_label = status_labels.get(a.status, a.status)
-            cost_str = f"${a.cost_usd:.4f}" if a.cost_usd > 0 else "—"
+            cost_str = f"\\${a.cost_usd:.4f}" if a.cost_usd > 0 else "—"
             # Mark timed-out agents that had non-zero cost as partial
             if a.status == "timeout" and a.cost_usd > 0:
-                cost_str = f"~${a.cost_usd:.4f} (partial)"
+                cost_str = f"~\\${a.cost_usd:.4f} (partial)"
             lines.append(
                 f"| `{a.label}` | {status_label} | {model_short} | "
                 f"{a.input_tokens:,} | {a.output_tokens:,} | "
@@ -345,7 +345,7 @@ def format_cost_summary(stats: RunStats) -> str:
     lines.append(
         f"*Prices are estimates sourced from: {get_pricing_source()}. "
         f"Token counts from `usage_metadata` in Vertex AI responses. "
-        f"Search cost: ${VERTEX_SEARCH_COST_PER_CALL:.3f} per grounded search call. "
+        f"Search cost: \\${VERTEX_SEARCH_COST_PER_CALL:.3f} per grounded search call. "
         f"Timed-out agent costs reflect tokens consumed before cancellation.*"
     )
     return "\n".join(lines)
