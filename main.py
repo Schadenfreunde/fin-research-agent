@@ -785,6 +785,23 @@ async def _gather_structured_data(ticker: str, run_id: str) -> tuple:
     return structured_text, company_name
 
 
+def _strip_fred_observations(series_dict: dict) -> dict:
+    """Remove `observations` arrays from a get_multiple_series() result.
+
+    Pre-gathered FRED data only needs the stats summary (current value, prior year,
+    min/max/mean). Full observations are 5 years of daily data — ~1,260 rows per series
+    — which creates severe context bloat (300-400K tokens for 19 series) and causes
+    rate-limit retries. Agents can call get_series() directly for full history.
+    """
+    cleaned = {}
+    for series_id, data in series_dict.items():
+        if isinstance(data, dict):
+            cleaned[series_id] = {k: v for k, v in data.items() if k != "observations"}
+        else:
+            cleaned[series_id] = data
+    return cleaned
+
+
 async def _gather_macro_data(run_id: str, topic: str = "") -> dict[str, str]:
     """
     Pre-fetch core macro background data for the macro pipeline.
@@ -870,11 +887,18 @@ async def _gather_macro_data(run_id: str, topic: str = "") -> dict[str, str]:
     results = await asyncio.gather(*coros, return_exceptions=True)
 
     # Build per-label formatted text dict
+    _FRED_LABELS = {"fred_fx_rates", "fred_macro_indicators"}
     macro_sections: dict[str, str] = {}
     for label, result in zip(labels, results):
         if isinstance(result, Exception):
             macro_sections[label] = f"## {label}\n[ERROR: {result}]\n"
         else:
+            # Strip raw observations from FRED series to prevent context bloat.
+            # 5yr daily data = ~1,260 rows/series × 19 series ≈ 300-400K tokens.
+            # Stats summary (current, prior year, min/max/mean) is sufficient for
+            # pre-gathered context; agents can call get_series() for full history.
+            if label in _FRED_LABELS and isinstance(result, dict):
+                result = _strip_fred_observations(result)
             macro_sections[label] = (
                 f"## {label}\n```json\n{_json.dumps(result, indent=2, default=str)}\n```\n"
             )
