@@ -142,9 +142,9 @@ Apply these rules during compilation so the output converts cleanly without manu
 
 **Tables:** Standard Markdown pipe tables are correct — do not change them.
 
-**Do NOT wrap the document header in a code block.** Write it as regular Markdown so pandoc
-renders it as body text. A YAML front matter block is prepended automatically by the pipeline
-before the report is saved — do not add your own `---` YAML block.
+**Do NOT wrap the document header in a code block.** Write it as regular Markdown so pandoc renders it as body text.
+
+**NEVER add a YAML front matter block.** Do NOT start your output with `---`. A YAML header is prepended automatically by the pipeline — adding your own causes a `YAML parse exception at line 2` pandoc crash and the PDF will not be generated.
 
 ## Cross-Reference Integration
 When assembling Sections 12, 13, 18, 20:

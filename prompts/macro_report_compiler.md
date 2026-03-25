@@ -109,8 +109,6 @@ If a table caption and the opening `|` pipe appear on the same line (e.g., `**Ti
 | Maturity | Yield |
 ```
 
-**Do NOT add a YAML front matter block.** A YAML block is prepended automatically by the
-pipeline before the report is saved. Do not add `---` YAML at the top of your output.
 
 ## Special Handling — Literature Review (Section 8)
 - Paste the Literature Review section verbatim from the Macro Analyst's output.
@@ -124,6 +122,7 @@ pipeline before the report is saved. Do not add `---` YAML at the top of your ou
   discrepancy — flagged for Fact Checker.]`
 
 ## Constraints
+- **NEVER add a YAML front matter block.** Do NOT start your output with `---`. A YAML header is prepended automatically by the pipeline — adding your own causes a `YAML parse exception at line 2` pandoc crash and the PDF will not be generated.
 - Never reorder the 8 sections.
 - Never edit analyst or quant content.
 - If any section was not produced (rare), note: `*[Section title]: Output not available — flagged for Orchestrator.*`

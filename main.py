@@ -1998,6 +1998,22 @@ async def run_research_pipeline(topic: str, report_type: str, run_id: str,
         _meta_lines += ["---", ""]
         _meta_block = "\n".join(_meta_lines)
 
+        # ── Strip any LLM-generated YAML front matter ─────────────────────────
+        # Compilers occasionally emit their own `---...---` block despite the
+        # explicit instruction not to.  When our header is then prepended the
+        # file starts with `---\n---` which HsYAML rejects at line 2, column 1,
+        # causing pandoc to fail on all 3 retry attempts.  Strip defensively.
+        import re as _re
+        _yaml_strip_match = _re.match(
+            r'^---\s*\n.*?\n---\s*\n', final_report, flags=_re.DOTALL
+        )
+        if _yaml_strip_match:
+            logger.warning(
+                "[%s] Stripped LLM-generated YAML front matter from final report "
+                "(%d chars removed)", run_id, _yaml_strip_match.end()
+            )
+            final_report = final_report[_yaml_strip_match.end():]
+
         final_report = _yaml_header + _meta_block + final_report
 
         identifier = topic.replace(" ", "-").replace("/", "-").lower()
