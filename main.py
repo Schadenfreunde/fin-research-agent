@@ -1205,6 +1205,8 @@ async def _run_equity_pipeline(topic: str, run_id: str,
     # The context processor identifies WHAT to research, not the raw values themselves.
     enriched_context_note = ""
     context_stripped = user_context.strip() if user_context else ""
+    if run_stats is not None:
+        run_stats.user_context = user_context or ""
     if context_stripped and context_stripped.lower() not in ("none", "n/a", ""):
         logger.info("[%s] STEP 1b: Context Processor (enriching user context — runs before Data Harvester)...", run_id)
         enriched_context_note = await _run_agent(
@@ -1226,6 +1228,8 @@ async def _run_equity_pipeline(topic: str, run_id: str,
             run_stats=run_stats,
         )
         logger.info("[%s] Context processor complete (%d chars)", run_id, len(enriched_context_note))
+        if run_stats is not None:
+            run_stats.context_processor_output = enriched_context_note
     else:
         logger.info("[%s] No user context provided — skipping context_processor", run_id)
 
@@ -1646,6 +1650,8 @@ async def _run_macro_pipeline(topic: str, run_id: str,
     # Runs FIRST so the Data Harvester Guidance section can direct the Macro Data
     # Agent's searches toward gaps relevant to the user's focus.
     enriched_context_note = ""
+    if run_stats is not None:
+        run_stats.user_context = user_context or ""
     if user_context and user_context.strip().lower() not in ("", "none", "n/a"):
         logger.info("[%s] STEP 1b: Context Processor (enriching user context — runs before Macro Data Agent)...", run_id)
         enriched_context_note = await _run_agent(
@@ -1665,6 +1671,8 @@ async def _run_macro_pipeline(topic: str, run_id: str,
             run_stats=run_stats,
         )
         logger.info("[%s] Context processor complete (%d chars)", run_id, len(enriched_context_note))
+        if run_stats is not None:
+            run_stats.context_processor_output = enriched_context_note
     else:
         logger.info("[%s] STEP 1b: No user context — skipping context processor", run_id)
 
@@ -1963,7 +1971,34 @@ async def run_research_pipeline(topic: str, report_type: str, run_id: str,
             "",
         ]
         _yaml_header = "\n".join(_yaml_lines) + "\n"
-        final_report = _yaml_header + final_report
+
+        # ── Prepend run metadata block (topic, context, CP guidance) ──────────
+        _meta_lines = [
+            f"*Run ID: `{run_id}` · {report_type.capitalize()} report · "
+            f"{datetime.datetime.utcnow().strftime('%Y-%m-%d')}*",
+            "",
+        ]
+        if user_context and user_context.strip().lower() not in ("", "none", "n/a"):
+            _meta_lines += [
+                "**Additional Context / Focus Areas:**",
+                "",
+                f"> {user_context.strip()}",
+                "",
+            ]
+        _cp_output = (run_stats.context_processor_output.strip()
+                      if run_stats and run_stats.context_processor_output else "")
+        if _cp_output:
+            _meta_lines += [
+                "**Research Guidance (Context Processor):**",
+                "",
+            ]
+            for _cp_line in _cp_output.splitlines():
+                _meta_lines.append(f"> {_cp_line}" if _cp_line.strip() else ">")
+            _meta_lines.append("")
+        _meta_lines += ["---", ""]
+        _meta_block = "\n".join(_meta_lines)
+
+        final_report = _yaml_header + _meta_block + final_report
 
         identifier = topic.replace(" ", "-").replace("/", "-").lower()
         storage_result = save_report(

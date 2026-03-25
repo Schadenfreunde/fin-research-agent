@@ -117,6 +117,9 @@ class RunStats:
     total_output_tokens: int = 0
     total_search_calls: int = 0
     total_cost_usd: float = 0.0
+    # Request provenance — captured at pipeline start
+    user_context: str = ""                  # additional context/focus areas from the request body
+    context_processor_output: str = ""     # enriched guidance produced by context-processor agent
 
 
 # ── Placeholder prefixes (must match _run_agent() return strings in main.py) ──
@@ -515,6 +518,29 @@ def generate_debug_report(stats: RunStats) -> str:
     for rec in recommendations:
         lines.append(f"- {rec}")
         lines.append("")
+
+    # ── Request Details section ────────────────────────────────────────────────
+    lines += ["", "---", "", "## Request Details", ""]
+
+    lines.append(f"**Topic:** {stats.topic}")
+    lines.append("")
+
+    if stats.user_context:
+        lines.append("**Additional Context / Focus Areas (from request body):**")
+        lines.append("")
+        for line in stats.user_context.splitlines():
+            lines.append(f"> {line}" if line.strip() else ">")
+        lines.append("")
+
+    cp_output = stats.context_processor_output.strip() if stats.context_processor_output else ""
+    lines.append("**Context Processor Guidance:**")
+    lines.append("")
+    if cp_output:
+        for line in cp_output.splitlines():
+            lines.append(f"> {line}" if line.strip() else ">")
+    else:
+        lines.append("> *(context processor not run — no additional context was provided)*")
+    lines.append("")
 
     lines += [
         "---",
