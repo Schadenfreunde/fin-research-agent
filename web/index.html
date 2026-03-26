@@ -449,13 +449,19 @@
           document.getElementById('type-equity').checked = true;
           topicLabel.textContent = 'Ticker Symbol';
           topicInput.placeholder = 'e.g. AAPL';
+        } else if (response.status === 409) {
+          statusEl.className = 'status error';
+          statusEl.textContent = data.message || 'A pipeline for this topic is already running. Please wait for it to complete.';
         } else {
           statusEl.className = 'status error';
-          statusEl.textContent = data.error || 'Something went wrong. Please try again.';
+          statusEl.textContent = data.error || data.message || 'Something went wrong. Please try again.';
         }
       } catch (err) {
+        // Connection dropped — pipeline likely still running on the server.
+        // Do NOT re-enable the button; show a warning instead of "retry".
         statusEl.className = 'status error';
-        statusEl.textContent = 'Network error. Please check your connection and try again.';
+        statusEl.innerHTML = '<strong>Connection lost.</strong> The pipeline is likely still running on the server — do not resubmit. Check your GCS bucket for results once complete.';
+        return; // skip finally so button stays disabled
       } finally {
         btn.disabled = false;
         btn.textContent = 'Run Research';

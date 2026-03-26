@@ -17,6 +17,7 @@ For scheduled runs:
 """
 
 import os
+import re
 import uuid
 import datetime
 import asyncio
@@ -68,6 +69,11 @@ app = FastAPI(
     description="Buy-side equity and macro research powered by Vertex AI",
     version="1.0.0",
 )
+
+# ── In-flight run deduplication ────────────────────────────────────────────────
+# Tracks "{report_type}:{topic_lower}" keys for pipelines currently running.
+# Prevents duplicate runs when a browser retries after a dropped connection.
+_active_run_topics: set[str] = set()
 
 # ── Import agents and tools ────────────────────────────────────────────────────
 
@@ -1392,8 +1398,7 @@ async def _run_equity_pipeline(topic: str, run_id: str,
         Extract only the named ## sections from a structured data block.
         Preserves the header lines (everything before the first ## section).
         """
-        import re as _re
-        parts = _re.split(r'\n(?=## )', text)
+        parts = re.split(r'\n(?=## )', text)
         header_parts = [p for p in parts if not p.startswith("## ")]
         kept_parts   = [
             p for p in parts
@@ -2003,9 +2008,9 @@ async def run_research_pipeline(topic: str, report_type: str, run_id: str,
         # explicit instruction not to.  When our header is then prepended the
         # file starts with `---\n---` which HsYAML rejects at line 2, column 1,
         # causing pandoc to fail on all 3 retry attempts.  Strip defensively.
-        import re as _re
-        _yaml_strip_match = _re.match(
-            r'^---\s*\n.*?\n---\s*\n', final_report, flags=_re.DOTALL
+        # The trailing \n? handles LLM output that ends `---` with no newline.
+        _yaml_strip_match = re.match(
+            r'^---\s*\n.*?\n---\s*\n?', final_report, flags=re.DOTALL
         )
         if _yaml_strip_match:
             logger.warning(
@@ -2127,6 +2132,19 @@ async def submit_research_request(request: Request):
             status_code=400,
         )
 
+    _topic_key = f"{report_type}:{topic.lower()}"
+    if _topic_key in _active_run_topics:
+        return JSONResponse(
+            {
+                "status": "duplicate",
+                "message": (
+                    f"A {report_type} pipeline for '{topic}' is already running. "
+                    f"Please wait for it to complete before submitting again."
+                ),
+            },
+            status_code=409,
+        )
+
     run_id = (
         f"{report_type}-{topic.replace(' ', '-').lower()}"
         f"-{datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
@@ -2137,6 +2155,7 @@ async def submit_research_request(request: Request):
     # does not scale down the instance mid-pipeline. Hard 1-hour limit as a safety
     # net against infinite loops (Cloud Run --timeout 3600 also enforces this).
     # Note: Cloud Run's maximum request timeout is 3600s; it cannot be set higher.
+    _active_run_topics.add(_topic_key)
     try:
         await asyncio.wait_for(
             run_research_pipeline(
@@ -2173,6 +2192,8 @@ async def submit_research_request(request: Request):
             },
             status_code=500,
         )
+    finally:
+        _active_run_topics.discard(_topic_key)
 
     return JSONResponse({
         "status": "complete",
