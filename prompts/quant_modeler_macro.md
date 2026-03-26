@@ -42,6 +42,7 @@ and use the closest available proxy.
 - Note publication lag and data vintage for all inputs
 - All dates must be explicit
 - **Never apply a US-calibrated model to a non-US topic without flagging the limitation**
+- **Cross-market spillover labeling**: When using a US indicator (FRED series, US Treasury yield, Estrella-Mishkin, NFCI, etc.) as a proxy for a non-US topic, tag the data point or sentence with **[Cross-market spillover: US → {topic geography}]**. Example: "US 10Y Treasury used as risk-free rate proxy **[Cross-market spillover: US → Eurozone]**". Keep the proxy brief and always note the geography-appropriate alternative if one exists.
 
 ---
 
