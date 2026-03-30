@@ -2008,16 +2008,25 @@ async def run_research_pipeline(topic: str, report_type: str, run_id: str,
         # explicit instruction not to.  When our header is then prepended the
         # file starts with `---\n---` which HsYAML rejects at line 2, column 1,
         # causing pandoc to fail on all 3 retry attempts.  Strip defensively.
-        # The trailing \n? handles LLM output that ends `---` with no newline.
-        _yaml_strip_match = re.match(
-            r'^---\s*\n.*?\n---\s*\n?', final_report, flags=re.DOTALL
-        )
-        if _yaml_strip_match:
-            logger.warning(
-                "[%s] Stripped LLM-generated YAML front matter from final report "
-                "(%d chars removed)", run_id, _yaml_strip_match.end()
-            )
-            final_report = final_report[_yaml_strip_match.end():]
+        #
+        # IMPORTANT: only strip genuine YAML — check that the second line is a
+        # YAML key (e.g. "title:", "date:").  A bare `---` horizontal rule at
+        # the start of the report has an empty or heading second line; a broad
+        # regex would non-greedily consume everything up to the next `---`
+        # separator in the document, silently deleting large sections of text.
+        _report_head = final_report.split('\n', 2)
+        if (
+            _report_head[0].strip() == '---'
+            and len(_report_head) > 1
+            and re.match(r'^[a-zA-Z][\w-]*\s*:', _report_head[1])
+        ):
+            _yaml_close = re.search(r'\n---\s*(?:\n|$)', final_report, flags=re.DOTALL)
+            if _yaml_close:
+                logger.warning(
+                    "[%s] Stripped LLM-generated YAML front matter from final report "
+                    "(%d chars removed)", run_id, _yaml_close.end()
+                )
+                final_report = final_report[_yaml_close.end():]
 
         final_report = _yaml_header + _meta_block + final_report
 

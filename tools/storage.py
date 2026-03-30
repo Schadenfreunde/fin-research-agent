@@ -194,13 +194,17 @@ def save_latex_report(
                     break
                 else:
                     last_pandoc_error = result.stderr.strip()
-                    # Log diagnostics to aid root-cause analysis
-                    content_prefix = repr(md_content[:300])
+                    # Log diagnostics: show YAML header start AND body start
+                    # (content[:300] is just the YAML header which is rarely the problem)
+                    _yaml_end = md_content.find('\n---\n', 4)
+                    _body_start = repr(md_content[_yaml_end + 5: _yaml_end + 505]) if _yaml_end != -1 else repr(md_content[300:600])
                     print(
                         f"[save_latex_report] pandoc attempt {_pandoc_attempt}/"
                         f"{_PANDOC_MAX_RETRIES} failed for {report_type}/{identifier}.\n"
                         f"  stderr: {last_pandoc_error}\n"
-                        f"  content[:300]: {content_prefix}"
+                        f"  total_chars: {len(md_content)}\n"
+                        f"  yaml_header[:300]: {repr(md_content[:300])}\n"
+                        f"  body_start[0:500]: {_body_start}"
                     )
                     if _pandoc_attempt < _PANDOC_MAX_RETRIES:
                         time.sleep(2)
