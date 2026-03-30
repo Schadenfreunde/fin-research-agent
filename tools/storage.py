@@ -167,13 +167,35 @@ def save_latex_report(
         tex_content = None
         last_pandoc_error = None
 
+        # ── Pre-process body: replace '---' HR separators to prevent YAML parse errors ──
+        # Pandoc parses any `---` block that follows a blank line as a YAML metadata
+        # block — not just the front matter.  When the body contains the standard
+        # '\n\n---\n\n' section separator, pandoc tries to parse the following content
+        # as YAML.  Markdown like `**Rating:** Buy` is then seen as a YAML alias
+        # (`*` must be followed by alphanumeric) → "YAML parse exception: while scanning
+        # an alias: did not find expected alphabetic or numeric character".
+        #
+        # Fix: find where the canonical YAML front matter ends and replace all
+        # '\n\n---\n\n' separators in the BODY with '\n\n- - -\n\n'.  The
+        # '- - -' form is a valid Markdown horizontal rule (CommonMark spec) that
+        # pandoc converts to \begin{center}\rule{...}\end{center} in LaTeX output
+        # but does NOT trigger YAML metadata parsing.
+        _pandoc_md = md_content
+        _yaml_fm_end = _pandoc_md.find('\n---\n', 4)  # find closing --- of front matter
+        if _yaml_fm_end != -1:
+            _body_split = _yaml_fm_end + 5  # skip past '\n---\n'
+            _pandoc_md = (
+                _pandoc_md[:_body_split]
+                + _pandoc_md[_body_split:].replace('\n\n---\n\n', '\n\n- - -\n\n')
+            )
+
         for _pandoc_attempt in range(1, _PANDOC_MAX_RETRIES + 1):
             with tempfile.TemporaryDirectory() as tmpdir:
                 md_path = os.path.join(tmpdir, "report.md")
                 tex_path = os.path.join(tmpdir, "report.tex")
 
                 with open(md_path, "w", encoding="utf-8") as f:
-                    f.write(md_content)
+                    f.write(_pandoc_md)
 
                 result = subprocess.run(
                     ["pandoc", md_path, "--standalone", "-o", tex_path],
@@ -194,16 +216,15 @@ def save_latex_report(
                     break
                 else:
                     last_pandoc_error = result.stderr.strip()
-                    # Log diagnostics: show YAML header start AND body start
-                    # (content[:300] is just the YAML header which is rarely the problem)
-                    _yaml_end = md_content.find('\n---\n', 4)
-                    _body_start = repr(md_content[_yaml_end + 5: _yaml_end + 505]) if _yaml_end != -1 else repr(md_content[300:600])
+                    # Log diagnostics against the pre-processed content sent to pandoc
+                    _yaml_end = _pandoc_md.find('\n---\n', 4)
+                    _body_start = repr(_pandoc_md[_yaml_end + 5: _yaml_end + 505]) if _yaml_end != -1 else repr(_pandoc_md[300:600])
                     print(
                         f"[save_latex_report] pandoc attempt {_pandoc_attempt}/"
                         f"{_PANDOC_MAX_RETRIES} failed for {report_type}/{identifier}.\n"
                         f"  stderr: {last_pandoc_error}\n"
-                        f"  total_chars: {len(md_content)}\n"
-                        f"  yaml_header[:300]: {repr(md_content[:300])}\n"
+                        f"  total_chars: {len(_pandoc_md)}\n"
+                        f"  yaml_header[:300]: {repr(_pandoc_md[:300])}\n"
                         f"  body_start[0:500]: {_body_start}"
                     )
                     if _pandoc_attempt < _PANDOC_MAX_RETRIES:
