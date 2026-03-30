@@ -95,6 +95,14 @@ Dockerfile           — python:3.11-slim, installs requirements.txt, copies . t
 
 **Data slicing**: `_MACRO_AGENT_SECTIONS` controls which pre-gathered sections each agent receives (analogous to equity's `_ANALYST_SECTIONS`). `macro_data_agent` gets yield curve + recession + World Bank + OECD + IMF + news; `quant_modeler_macro` gets yield curve + recession + FRED FX/macro + ECB + IMF (no news/World Bank); `macro_analyst` gets everything except AV commodities + Polygon FX (redundant with FRED). Context size per agent: ~20–40K chars instead of ~80K for the full dump.
 
+**Context processor (macro)**: receives a compact `_macro_data_manifest()` — a ~400-word inventory of available sections with one-line descriptions — instead of the full data dump. Reduces CP input tokens from ~700K to ~25K, preventing the 300s timeout that occurred on the Hormuz run. `_macro_data_manifest()` is in `main.py` near `_slice_macro_data()`.
+
+**Deduplication**: `_active_run_topics: set[str]` (module-level) prevents the same topic from running twice. If a second `POST /research` arrives for an in-progress topic, the server returns HTTP 409. The frontend shows a "already running" message on 409, and keeps the submit button disabled on network errors (connection drop) to prevent user resubmit.
+
+**Meta block**: every final report (equity + macro) includes a `_meta_block` injected immediately after the YAML front matter containing: run ID, report type, date, user-provided context (blockquoted), and context processor output (blockquoted). Visible at the top of the `.md` and `.tex` outputs.
+
+**YAML strip guard**: if the LLM compiler emits its own YAML front matter, `run_research_pipeline()` strips it before prepending the canonical header (to prevent double-`---` pandoc crash). Guard checks that line 1 is `---` AND line 2 is a genuine YAML key (`^[a-zA-Z][\w-]*\s*:`) before stripping — prevents accidental deletion of Markdown content starting with `---` horizontal rules.
+
 ---
 
 ## Model Tiers
@@ -149,6 +157,7 @@ Change all at once in `config.yaml → models`. Model API calls always use `mode
 | `review.max_passes` | 3 | Review loop iterations |
 | `search.min_interval_seconds` | 2.0 | Min gap between web_search() calls. Set to 10.0 on free tier GCP. Deployed via `SEARCH_MIN_INTERVAL` env var. |
 | `timeouts.default` | 720s | Hard wall-clock per agent |
+| `timeouts.context_processor` | 420s | Raised from 300s — macro CP receives compact manifest (~25K tokens) instead of full data dump (~700K); 3 tool call round-trips fit within 420s |
 | `timeouts.data_harvester` | 720s | |
 | `timeouts.macro_data_agent` | 720s | |
 | `timeouts.fundamental_analyst_market` | 480s | Raised from 360s after NVDA run showed 2 consecutive timeouts due to search queue contention |
@@ -217,8 +226,14 @@ See BUG-011 in `fixed_bugs.md` for full details and NOTE-001 for search throttle
 ### ℹ️ Transient INVALID_ARGUMENT (400) — MITIGATED
 When 6 analysts start simultaneously via `asyncio.gather`, occasional race conditions cause one agent's first LLM call to fail with `400 INVALID_ARGUMENT` (model "—", 0 tokens in debug report). Fixed by adding INVALID_ARGUMENT to the retryable error list in `_run_agent` — the agent retries with ~15s backoff and succeeds on the second attempt. If you see a debug report with model "—" and `rl:1`, this retry fired. If still failing, check Cloud Run logs for the full traceback.
 
-### ⚠️ Pandoc `.tex` conversion — FIXED (BUG-010)
-`save_latex_report` failed with `pandoc failed: YAML parse exception at line 1, column 1` on pandoc 3.x (Debian Bookworm). Root cause: `header-includes: |` (literal block scalar) is rejected by HsYAML (pandoc 3.x YAML parser). Fixed by using a YAML list with single-quoted strings — the canonical pandoc format. **The YAML front matter `header-includes` in `main.py` must remain a list of single-quoted strings.** Single quotes are required because `\thepage`, `\fancyhf`, `\usepackage`, etc. contain backslash sequences that YAML double-quoted strings would interpret as escape codes.
+### ⚠️ Pandoc `.tex` conversion — FIXED (BUG-010, BUG-013, BUG-015, BUG-016)
+Multiple pandoc `.tex` generation issues, all resolved:
+- **BUG-010** — `header-includes: |` (block scalar) rejected by HsYAML (pandoc 3.x). Fixed: changed to YAML list of single-quoted strings.
+- **BUG-013** — Transient HsYAML parse failures. Fixed: `save_latex_report()` retries up to 3× with 2s backoff.
+- **BUG-015** — LLM compiler emitting its own YAML front matter → double `---` at file start → `YAML parse exception at line 2`. Fixed: defensive YAML strip in `run_research_pipeline()` + YAML no-front-matter rule moved to top of Constraints in both compiler prompts.
+- **BUG-016** — YAML strip regex (`.*?` non-greedy) accidentally deleted Executive Summary. Fixed: strip now guards on line 2 being a genuine YAML key before stripping.
+
+**`header-includes` must remain a YAML list of single-quoted strings** in `main.py`. Single quotes are required because backslash sequences (`\thepage`, `\usepackage`, etc.) would be interpreted as YAML escape codes in double-quoted strings.
 
 ### ℹ️ Compiler 0 output tokens — FIXED
 `report-compiler` and `macro-report-compiler` produced 0 output tokens when upstream agents failed and left `[ERROR: ...]` or `[TIMEOUT: ...]` placeholder strings in the compile context. Gemini models refuse to process requests that contain these literal error strings. Fixed by `_clean_for_compiler()` in `main.py` — applied to both equity and macro pipelines before compilers are called.

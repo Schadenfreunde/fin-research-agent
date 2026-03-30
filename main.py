@@ -1840,17 +1840,29 @@ async def _run_macro_pipeline(topic: str, run_id: str,
                             "PASS" if fact_passed else "FAIL",
                             "PASS" if review_passed else "FAIL")
                 if pass_num < _MAX_REVIEW_PASSES:
+                    # Only include analyst outputs when compiled is empty/placeholder.
+                    # If compiled is already a full report (> 1 000 chars), appending
+                    # 8 000+ chars of analyst text inflates context and can push the
+                    # model past its effective output range, causing a tiny stub output.
+                    if _is_placeholder(compiled) or len(compiled) < 1_000:
+                        _analyst_rebuild = (
+                            f"NOTE: The report must retain all 8 sections including Section 8 "
+                            f"(Literature Review). Restore it verbatim from the original analyst "
+                            f"output below:\n"
+                            f"--- ORIGINAL MACRO ANALYST OUTPUT ---\n"
+                            f"{analysis_out[-8000:] if len(analysis_out) > 8000 else analysis_out}"
+                        )
+                        logger.info("[%s] Macro pass %d: compiled is placeholder — including analyst outputs for rebuild", run_id, pass_num)
+                    else:
+                        _analyst_rebuild = ""
+                        logger.info("[%s] Macro pass %d: compiled is %d chars — omitting analyst outputs from revise context", run_id, pass_num, len(compiled))
                     revise_context = (
                         f"REVISION REQUEST — Pass {pass_num}\n"
                         f"Topic: {topic}\n\n"
                         f"FACT CHECKER FEEDBACK:\n{fact_result}\n\n"
                         f"REVIEW AGENT FEEDBACK:\n{review_result}\n\n"
                         f"CURRENT REPORT:\n{compiled}\n\n"
-                        f"NOTE: The report must retain all 8 sections including Section 8 "
-                        f"(Literature Review). If Section 8 is missing from the current report, "
-                        f"restore it verbatim from the original analyst output below:\n"
-                        f"--- ORIGINAL MACRO ANALYST SECTION 8 (Literature Review) ---\n"
-                        f"{analysis_out[-8000:] if len(analysis_out) > 8000 else analysis_out}"
+                        f"{_analyst_rebuild}"
                     )
                     new_compiled = await _run_agent(
                         macro_report_compiler, revise_context,
