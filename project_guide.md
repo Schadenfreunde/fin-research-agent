@@ -185,6 +185,83 @@ Change all at once in `config.yaml → models`. Model API calls always use `mode
 
 ---
 
+## Macro Report Mode (Sprint: macro-deep-research-redesign)
+
+Every macro run is classified into one of two modes before data gathering begins:
+
+| Mode | Signal Agent runs? | Section 5 title | When used |
+|---|---|---|---|
+| `research` | No | Market Relevance | Thematic/structural topics; `deep_dive=True`; or `trade_signal=False` |
+| `both` | Yes | Depends on conviction tier | Directional topics; `trade_signal=True`; or auto-detected positioning language |
+
+**New `/research` request parameters (macro only):**
+- `trade_signal: bool | None` — explicit mode override. `None` = auto-detect via LLM classifier (default).
+- `deep_dive: bool` — force `research` mode, suppressing signal detection even if topic sounds directional.
+
+**Signal Agent conviction tiers (only in `both` mode, runs in parallel with Quant Modeler):**
+| Tier | Condition | Section 5 title | Section 5 content |
+|---|---|---|---|
+| 1 | 4/4 conditions met (driver + dated catalyst + threshold + analog) | Investment Implications & Trade Recommendation | Full trade call |
+| 2 | Directional but incomplete conditions | Investment Implications | Directional stance, no entry/stop |
+| 3 | Thematic or contested | Market Relevance | Observational commentary only |
+
+**New agents added:**
+| Agent | Model | Timeout | Notes |
+|---|---|---|---|
+| `macro_mode_detector` | tier3 | 30s | Classification only; 128 max tokens; no tools |
+| `macro_signal_agent` | tier3 | 180s | Conviction tier assessment; 4096 max tokens; no tools |
+
+**Gemini Deep Research (Phase 1e):**
+- NOT an ADK agent — called directly via `tools/deep_research.py` → `run_deep_research()`
+- Uses Gemini Developer API (`deep-research-preview-04-2026`), auth via `google-ai-api-key` in Secret Manager
+- Output saved to GCS as `gs://{bucket}/macro/{identifier}/{run_id}_synthesis.md` — inspectable artifact
+- On timeout/error: falls back to Source Validator output as Macro Analyst's primary qualitative input
+- Cost tracked via `config.yaml → pricing.deep_research_cost_per_query`
+
+**Meta block additions (macro reports only):**
+```
+*Report mode: Research + Signal*
+*Mode rationale: Topic contains explicit EUR/USD positioning language.*
+```
+
+**GCS artifacts (macro — updated):**
+| File | Path | Saved when |
+|---|---|---|
+| Final report | `gs://{bucket}/macro/{id}/{run_id}.md` | End of pipeline |
+| LaTeX | `gs://{bucket}/macro/{id}/{run_id}.tex` | End of pipeline |
+| Synthesis document | `gs://{bucket}/macro/{id}/{run_id}_synthesis.md` | After Phase 1e, before Macro Analyst |
+| Debug report | `gs://{bucket}/debug/{run_id}.md` | End of pipeline |
+
+**Pipeline start curl examples:**
+```bash
+# Research mode (thematic, no trade signal)
+curl -X POST http://localhost:8080/research \
+  -H "Content-Type: application/json" \
+  -d '{"topic": "Impact of demographic shifts on EM productivity", "report_type": "macro"}'
+
+# Research + Signal (explicit)
+curl -X POST http://localhost:8080/research \
+  -H "Content-Type: application/json" \
+  -d '{"topic": "EUR/USD outlook into ECB June meeting", "report_type": "macro", "trade_signal": true}'
+
+# Force deep dive
+curl -X POST http://localhost:8080/research \
+  -H "Content-Type: application/json" \
+  -d '{"topic": "Secular stagnation and neutral rates", "report_type": "macro", "deep_dive": true}'
+```
+
+**Test suite:**
+```bash
+# Unit tests (no API calls)
+pytest tests/macro/test_mode_detection.py tests/macro/test_signal_agent.py \
+       tests/macro/test_deep_research_handoff.py tests/macro/test_section5_rendering.py -v
+
+# All macro tests
+pytest tests/macro/ -v
+```
+
+---
+
 ## Known Issues & Fixes
 
 ### ⚠️ ADK Context Variable Bug (FIXED)
