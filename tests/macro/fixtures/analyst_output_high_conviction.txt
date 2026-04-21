@@ -1,0 +1,14 @@
+## Section 1: Macro Summary
+
+[Fact] The EUR/USD exchange rate has depreciated 4.2% year-to-date as the ECB's June meeting approaches, with markets pricing 25bp of cuts by July 2026.
+
+[Analysis] The divergence between ECB easing expectations and Fed-on-hold positioning creates a clear directional driver for EUR/USD weakness. With the ECB governing council majority favoring cuts and Eurozone core inflation falling to 2.4% (March 2026), the interest rate differential is the primary mechanical force.
+
+[Inference] A 25bp ECB cut on June 12, 2026 — widely telegraphed and now 87% priced by OIS — is unlikely to be the catalyst. The market-moving risk is a dovish statement signaling further sequential cuts, which would push the EUR/USD pair below 1.0800 on a 4-6 week horizon.
+
+**Probability-weighted scenarios:**
+- Base (60%): ECB cuts 25bp, signals gradual path → EUR/USD 1.0780–1.0850
+- Bear EUR (25%): ECB signals sequential cuts → EUR/USD 1.0650–1.0750
+- Bull EUR (15%): ECB cuts but signals pause → EUR/USD 1.0950–1.1050
+
+**Key watch point:** ECB June 12 statement language on "meeting-by-meeting" vs "gradual" — 14 trading days.

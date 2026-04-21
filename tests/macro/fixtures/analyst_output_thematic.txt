@@ -1,0 +1,14 @@
+## Section 1: Macro Summary
+
+[Fact] Emerging market working-age population growth will slow from 1.8% annually (2010–2020) to 0.9% (2020–2030) across the major EM economies, with East Asia already in demographic contraction.
+
+[Analysis] The demographic dividend that drove EM productivity convergence in the 2000s is structurally reversing. As dependency ratios rise, savings rates fall, and human capital investment per worker declines, total factor productivity (TFP) growth — which averaged 2.1% annually across major EMs from 2000–2010 — is projected to halve by 2030.
+
+[Inference] This is a decade-long structural theme with no near-term trade catalyst. The implications are diffuse across EM asset classes and geography-specific: India and Sub-Saharan Africa remain demographic dividend recipients; East Asia and Latin America are entering headwind territory.
+
+**Probability-weighted scenarios:**
+- Base (55%): Gradual demographic headwind — EM TFP growth declines to 1.0–1.2% by 2030
+- Downside (30%): Policy failure to compensate (insufficient automation investment, poor migration policy) — TFP growth below 0.5%
+- Upside (15%): Technology-led productivity offset (AI, robotics adoption) sustains TFP above 1.5%
+
+**Key watch point:** Annual World Bank TFP estimates by country (published Q4) and OECD demographic projections update (2027).

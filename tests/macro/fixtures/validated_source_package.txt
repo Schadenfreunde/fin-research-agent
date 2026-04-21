@@ -1,0 +1,22 @@
+## Augmented Source Package
+Topic: Impact of demographic shifts on EM productivity
+Primary geography: Emerging Markets (broad)
+
+### Validated Sources
+
+| # | Title | Source | Date | Geography | Theme | Status |
+|---|---|---|---|---|---|---|
+| 1 | "Demographic Dividends and Economic Growth in Asia" | IMF Working Paper | 2023 | EM Asia | Demographics/Productivity | [PASS] |
+| 2 | "Labor Force Aging and Total Factor Productivity" | BIS Working Paper | 2022 | Global/EM | Demographics | [PASS] |
+| 3 | "EM Productivity Convergence: Has It Stalled?" | World Bank Research | 2024 | EM broad | Productivity | [PASS] |
+| 4 | "The Silver Economy: Policy Implications for EM" | OECD Economic Outlook | 2023 | EM/DM | Demographics | [PASS] |
+| 5 | "India's Demographic Dividend: Progress and Risks" | RBI Working Paper | 2023 | India | Demographics | [PASS] |
+
+### Coverage Summary
+- Academic papers (on-geography): 5 [PASS]
+- Central bank publications: 2 [PASS]
+- Recent news (<90 days): 3 [PASS]
+- Historical analog literature: 1 [CAUTION — only 1 found]
+
+### Validation Summary
+All sources match EM geography. Historical analog gap partially filled. Augmented with 2 additional CORE papers.

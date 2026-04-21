@@ -1,0 +1,14 @@
+## Section 1: Macro Summary
+
+[Fact] UK gilt yields have risen 38bp year-to-date, reflecting a combination of sticky services inflation (5.2% as of March 2026) and deteriorating fiscal dynamics following the October 2025 budget.
+
+[Analysis] The rate path for the Bank of England is complicated by three competing forces: (1) services inflation persistence suggesting later cuts, (2) weakening labour market data suggesting earlier cuts, and (3) fiscal expansion increasing gilt supply and term premium. These forces pull in opposing directions with no clear near-term resolution.
+
+[Inference] The balance of risks is uncertain. While the long-end of the gilt curve looks expensive relative to historical fiscal deficits at this level, the timing of any re-pricing is unclear given the BoE's communication ambiguity. A directional view on gilts requires a catalyst that is not yet visible in the data.
+
+**Probability-weighted scenarios:**
+- Base (45%): BoE cuts twice in H2 2026, gilt 10Y range-bound 4.40–4.70%
+- Bear gilts (30%): fiscal slippage + sticky inflation → 10Y above 4.90%
+- Bull gilts (25%): sharp growth slowdown → BoE accelerates cuts, 10Y below 4.20%
+
+**Key watch point:** May 2026 CPI release (June 18) and June MPC meeting (June 19) — but conviction on direction is low ahead of these.
