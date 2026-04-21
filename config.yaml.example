@@ -55,6 +55,7 @@ secrets:
   polygon_api_key:   "polygon-api-key"         # Register free at polygon.io
   news_api_key:      "news-api-key"            # newsapi.org — 100 req/day free; real-time requires paid
   openfigi_api_key:  "open-figi-api-key"       # openfigi.com — free; key raises rate limit
+  gemini_api_key:    "gemini-api-key"          # Gemini Developer API key for Deep Research
   # Note: World Bank and OECD APIs are fully open — no API keys required
 
 # ------------------------------------------------------------
@@ -133,6 +134,9 @@ timeouts:
   macro_analyst: 480                   # 8 min
   context_processor: 300              # 5 min
   default: 720                         # 12 min
+  mode_detector: 30                    # 30s — single classification call
+  deep_research: 600                   # 10 min — Gemini Deep Research polling
+  signal_agent: 180                    # 3 min — conviction assessment
 
 # ------------------------------------------------------------
 # CONCURRENCY SETTINGS (Vertex AI quota management)
@@ -198,6 +202,10 @@ search:
 # ------------------------------------------------------------
 pricing:
   search_cost_per_call: 0.035   # USD per Vertex AI grounded search invocation
+
+  # Gemini Deep Research API — per-query cost (Gemini Developer API, not Vertex AI tokens)
+  # Source: https://ai.google.dev/pricing — update when pricing is confirmed
+  deep_research_cost_per_query: 0.00   # Set to actual cost once confirmed from Google pricing page
 
   # USD per 1M tokens — input (prompt) / output (completion)
   # Source: https://cloud.google.com/vertex-ai/generative-ai/pricing
