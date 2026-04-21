@@ -472,6 +472,21 @@ macro_source_validator = Agent(
     ],
 )
 
+macro_mode_detector = Agent(
+    name="macro_mode_detector",
+    model=MODEL_TIER3,
+    description=(
+        "Request classifier for the macro pipeline. Reads the topic string and "
+        "classifies it as 'research' (thematic, no trade positioning) or 'both' "
+        "(trade signal warranted). Returns REPORT_MODE and RATIONALE only."
+    ),
+    instruction=_load_prompt("macro_mode_detector.md"),
+    generate_content_config=genai_types.GenerateContentConfig(
+        max_output_tokens=128,
+    ),
+    tools=[],  # Classification only — no external tools needed
+)
+
 macro_report_compiler = Agent(
     name="macro_report_compiler",
     model=MODEL_TIER_COMPILER,
@@ -542,6 +557,7 @@ EQUITY_AGENTS = {
 MACRO_AGENTS = {
     "orchestrator": research_orchestrator,
     "context_processor": context_processor,
+    "macro_mode_detector": macro_mode_detector,
     "macro_data_agent": macro_data_agent,
     "macro_source_validator": macro_source_validator,
     "macro_analyst": macro_analyst,
