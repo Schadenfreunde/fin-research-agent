@@ -92,6 +92,7 @@ from agents.team import (
     report_compiler,
     macro_data_agent,
     macro_source_validator,
+    macro_mode_detector,
     macro_analyst,
     quant_modeler_macro,
     macro_report_compiler,
@@ -135,6 +136,9 @@ _QUANT_EQUITY_TIMEOUT            = _TIMEOUTS.get("quant_modeler_equity",        
 _QUANT_MACRO_TIMEOUT             = _TIMEOUTS.get("quant_modeler_macro",          540)  # 9 min
 _MACRO_ANALYST_TIMEOUT           = _TIMEOUTS.get("macro_analyst",                480)  # 8 min
 _MACRO_SOURCE_VALIDATOR_TIMEOUT  = _TIMEOUTS.get("macro_source_validator",        300)  # 5 min
+_MODE_DETECTOR_TIMEOUT           = _TIMEOUTS.get("mode_detector",                 30)  # 30s
+_DEEP_RESEARCH_TIMEOUT           = _TIMEOUTS.get("deep_research",                 600)  # 10 min
+_SIGNAL_AGENT_TIMEOUT            = _TIMEOUTS.get("signal_agent",                  180)  # 3 min
 _CONTEXT_PROCESSOR_TIMEOUT       = _TIMEOUTS.get("context_processor",            300)  # 5 min
 
 # ── Vertex AI concurrency / rate-limit settings ────────────────────────────────
@@ -1604,15 +1608,41 @@ async def _run_equity_pipeline(topic: str, run_id: str,
     return f"{exec_summary}\n\n---\n\n{compiled}{review_notes_text}{cost_section}"
 
 
+def _parse_mode_detector_output(raw: str) -> tuple[str, str]:
+    """
+    Parse the mode detector's output into (report_mode, mode_rationale).
+
+    Expected format from the agent:
+        REPORT_MODE: research
+        RATIONALE: Topic is a structural exploration...
+
+    Falls back to "research" if parsing fails.
+    """
+    report_mode = "research"
+    mode_rationale = "Auto-detected as research mode (default fallback)."
+    for line in raw.splitlines():
+        line = line.strip()
+        if line.upper().startswith("REPORT_MODE:"):
+            val = line.split(":", 1)[1].strip().lower()
+            if val in ("research", "both", "signal"):
+                report_mode = val
+        elif line.upper().startswith("RATIONALE:"):
+            mode_rationale = line.split(":", 1)[1].strip()
+    return report_mode, mode_rationale
+
+
 # ── Macro pipeline ─────────────────────────────────────────────────────────────
 
 async def _run_macro_pipeline(topic: str, run_id: str,
                               user_context: str = "",
-                              run_stats: "RunStats" = None) -> str:
+                              run_stats: "RunStats" = None,
+                              trade_signal: bool | None = None,
+                              deep_dive: bool = False) -> str:
     """
     Run the full macro/thematic research pipeline and return the assembled report text.
 
     Sequence:
+      0.  Mode Detection (classify request before data gathering)
       1a. Core FRED data (Python direct)
       1b. Context Processor (optional — runs FIRST so Data Harvester Guidance
           can direct the Macro Data Agent's searches toward the user's focus)
@@ -1624,6 +1654,40 @@ async def _run_macro_pipeline(topic: str, run_id: str,
       4.  Macro Report Compiler (assembles 8 sections + appendices)
       5.  Review loop (fact checker + review agent, up to max_passes)
     """
+
+    # ── Phase 0: Mode Detection ────────────────────────────────────────────────
+    # Classify the request before any data gathering. Explicit flags override
+    # the LLM classifier. "signal"-only mode is reserved for future use.
+    if deep_dive:
+        report_mode = "research"
+        mode_rationale = "deep_dive=True — signal mode suppressed by caller."
+        logger.info("[%s] Phase 0: Mode forced to 'research' (deep_dive=True)", run_id)
+    elif trade_signal is True:
+        report_mode = "both"
+        mode_rationale = "trade_signal=True — signal mode activated by caller."
+        logger.info("[%s] Phase 0: Mode forced to 'both' (trade_signal=True)", run_id)
+    elif trade_signal is False:
+        report_mode = "research"
+        mode_rationale = "trade_signal=False — signal mode suppressed by caller."
+        logger.info("[%s] Phase 0: Mode forced to 'research' (trade_signal=False)", run_id)
+    else:
+        # Auto-detect via LLM classifier
+        logger.info("[%s] Phase 0: Auto-detecting report mode via classifier...", run_id)
+        _mode_raw = await _run_agent(
+            macro_mode_detector,
+            f"Macro research topic: {topic}",
+            "mode-detector",
+            run_id,
+            timeout_seconds=_MODE_DETECTOR_TIMEOUT,
+            run_stats=run_stats,
+        )
+        report_mode, mode_rationale = _parse_mode_detector_output(_mode_raw)
+        logger.info("[%s] Phase 0: Detected report_mode='%s' — %s", run_id, report_mode, mode_rationale)
+
+    # Store mode metadata on run_stats for use in meta block
+    if run_stats is not None:
+        run_stats.report_mode = report_mode          # dynamic attribute
+        run_stats.mode_rationale = mode_rationale    # dynamic attribute
 
     # ── Step 1a: Core macro data — Python fetches directly ──────────────────
     # 90s top-level timeout: covers FRED + World Bank + OECD + IMF + ECB + AV + Polygon.
@@ -1900,7 +1964,9 @@ async def _run_macro_pipeline(topic: str, run_id: str,
 # ── Top-level pipeline runner ──────────────────────────────────────────────────
 
 async def run_research_pipeline(topic: str, report_type: str, run_id: str,
-                                user_context: str = ""):
+                                user_context: str = "",
+                                trade_signal: bool | None = None,
+                                deep_dive: bool = False):
     """
     Entry point for background pipeline runs.
     Dispatches to the equity or macro pipeline and saves the result to GCS.
@@ -1929,7 +1995,11 @@ async def run_research_pipeline(topic: str, report_type: str, run_id: str,
             )
         else:
             final_report = await _run_macro_pipeline(
-                topic, run_id, user_context=user_context, run_stats=run_stats
+                topic, run_id,
+                user_context=user_context,
+                run_stats=run_stats,
+                trade_signal=trade_signal,
+                deep_dive=deep_dive,
             )
 
         # ── Prepend pandoc/LaTeX YAML front matter ────────────────────────────
@@ -1993,8 +2063,18 @@ async def run_research_pipeline(topic: str, report_type: str, run_id: str,
         _meta_lines = [
             f"*Run ID: `{run_id}` · {report_type.capitalize()} report · "
             f"{datetime.datetime.utcnow().strftime('%Y-%m-%d')}*",
-            "",
         ]
+        # Add report mode metadata for macro reports
+        if report_type == "macro":
+            _report_mode = getattr(run_stats, "report_mode", "research")
+            _mode_rationale = getattr(run_stats, "mode_rationale", "")
+            _mode_display = "Research + Signal" if _report_mode == "both" else "Research"
+            _meta_lines += [
+                f"*Report mode: {_mode_display}*",
+                f"*Mode rationale: {_mode_rationale}*",
+            ]
+        _meta_lines.append("")
+
         if user_context and user_context.strip().lower() not in ("", "none", "n/a"):
             _meta_lines += [
                 "**Additional Context / Focus Areas:**",
@@ -2141,6 +2221,19 @@ async def submit_research_request(request: Request):
     report_type = body.get("report_type", "equity").strip().lower()
     user_context = body.get("context", "").strip()  # Optional user guidance / focus areas
 
+    # Parse trade_signal parameter (bool, string "true"/"false", or None)
+    trade_signal_raw = body.get("trade_signal", None)
+    if isinstance(trade_signal_raw, bool):
+        trade_signal = trade_signal_raw
+    elif isinstance(trade_signal_raw, str):
+        trade_signal = trade_signal_raw.lower() == "true" if trade_signal_raw.lower() in ("true", "false") else None
+    else:
+        trade_signal = None
+
+    # Parse deep_dive parameter (bool or string "true"/"false")
+    deep_dive_raw = body.get("deep_dive", False)
+    deep_dive = bool(deep_dive_raw) if isinstance(deep_dive_raw, bool) else str(deep_dive_raw).lower() == "true"
+
     if not topic:
         return JSONResponse(
             {"error": "Topic is required. Please enter a ticker symbol or research topic."},
@@ -2182,6 +2275,7 @@ async def submit_research_request(request: Request):
             run_research_pipeline(
                 topic=topic, report_type=report_type,
                 run_id=run_id, user_context=user_context,
+                trade_signal=trade_signal, deep_dive=deep_dive,
             ),
             timeout=3600,
         )
