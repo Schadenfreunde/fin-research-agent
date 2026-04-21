@@ -13,32 +13,38 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
 
 # ── Tests for _parse_mode_detector_output ─────────────────────────────────────
 
-def _parse_mode_detector_output(raw: str) -> tuple[str, str]:
-    """
-    Parse the mode detector's output into (report_mode, mode_rationale).
-
-    Expected format from the agent:
-        REPORT_MODE: research
-        RATIONALE: Topic is a structural exploration...
-
-    Falls back to "research" if parsing fails.
-    """
-    report_mode = "research"
-    mode_rationale = "Auto-detected as research mode (default fallback)."
-    for line in raw.splitlines():
-        line = line.strip()
-        if line.upper().startswith("REPORT_MODE:"):
-            val = line.split(":", 1)[1].strip().lower()
-            if val in ("research", "both", "signal"):
-                report_mode = val
-        elif line.upper().startswith("RATIONALE:"):
-            mode_rationale = line.split(":", 1)[1].strip()
-    return report_mode, mode_rationale
-
-
 def _parse(raw: str):
-    """Helper to call the parse function."""
-    return _parse_mode_detector_output(raw)
+    """Import and call the parse helper from main.py."""
+    # Extract just the helper function from main.py
+    src = pathlib.Path(__file__).parent.parent.parent / "main.py"
+    text = src.read_text()
+    # Extract just the helper function
+    start = text.index("def _parse_mode_detector_output(")
+    # Find the next top-level function definition (def or async def at line start)
+    # Skip comments and blank lines
+    lines = text[start:].split('\n')
+    fn_lines = []
+    in_function = False
+    indent_level = None
+    for i, line in enumerate(lines):
+        if i == 0:
+            # First line is the def line
+            indent_level = len(line) - len(line.lstrip())
+            fn_lines.append(line)
+            in_function = True
+        elif in_function:
+            # Check if we've reached the next top-level function
+            stripped = line.strip()
+            if stripped and not stripped.startswith('#'):
+                current_indent = len(line) - len(line.lstrip())
+                if current_indent <= indent_level and (stripped.startswith('def ') or stripped.startswith('async def ')):
+                    # Found the next function
+                    break
+            fn_lines.append(line)
+    fn_src = '\n'.join(fn_lines)
+    ns = {}
+    exec(fn_src, ns)
+    return ns["_parse_mode_detector_output"](raw)
 
 
 def test_parse_research_mode():
@@ -66,7 +72,7 @@ def test_parse_fallback_on_garbage():
 
 def test_parse_unknown_mode_falls_back():
     mode, _ = _parse("REPORT_MODE: signal_only\nRATIONALE: Something.")
-    assert mode == "research"  # "signal" not in allowed set yet
+    assert mode == "research"  # "signal_only" not in allowed set
 
 
 def test_parse_rationale_present_both():
