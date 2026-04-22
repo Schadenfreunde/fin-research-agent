@@ -100,6 +100,7 @@ from agents.team import (
     review_agent,
 )
 from tools.storage import save_report, save_run_metadata, list_reports, save_latex_report
+from tools.deep_research import run_deep_research, parse_synthesis_document
 from tools.news_api import get_company_news_newsapi, get_topic_news_newsapi
 from tools.openfigi_data import get_figi_mapping
 from tools.worldbank_data import get_worldbank_macro_snapshot
@@ -181,6 +182,22 @@ def _load_web_form() -> str:
     return html_path.read_text()
 
 
+# ── Helper: Load Google AI API key from Secret Manager ───────────────────────
+
+def _get_google_ai_api_key() -> str | None:
+    """
+    Load the Gemini Developer API key from Secret Manager.
+    Secret name: "google-ai-api-key" (already created in GCP Secret Manager).
+    Used exclusively by the Deep Research agent — all other agents use Vertex AI.
+    """
+    try:
+        from tools.http_client import get_api_key
+        return get_api_key("google-ai-api-key")
+    except Exception as exc:
+        logger.warning("Could not load 'google-ai-api-key' from Secret Manager: %s", exc)
+        return None
+
+
 # ── Startup secrets validation ─────────────────────────────────────────────────
 
 def _validate_secrets_at_startup() -> None:
@@ -201,6 +218,7 @@ def _validate_secrets_at_startup() -> None:
         "SEMANTIC_SCHOLAR_API_KEY": "Semantic Scholar (optional fallback)",
         "REPORTS_BUCKET":           "GCS reports storage bucket",
         "GOOGLE_CLOUD_PROJECT":     "GCP project ID",
+        "google-ai-api-key":        "Gemini Developer API key (Deep Research agent only)",
     }
     present, missing = [], []
     for env_var, description in required_keys.items():
