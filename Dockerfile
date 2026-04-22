@@ -17,9 +17,10 @@ RUN apt-get update && \
 # Copy dependency file first (allows Docker to cache this layer)
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Install uv (fast resolver — handles complex Google SDK dependency graphs that
+# pip's backtracking resolver times out on) then install all deps with uv.
+RUN pip install --no-cache-dir uv && \
+    uv pip install --system --no-cache -r requirements.txt
 
 # Copy the entire project into the container
 COPY . .

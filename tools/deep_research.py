@@ -122,6 +122,8 @@ async def run_deep_research(
     """
     Call the Gemini Deep Research API and return the synthesis text.
 
+    Uses the google-genai SDK (new, replaces deprecated google-generativeai).
+
     On timeout or API error, raises an exception — callers catch and fall back
     to source_package as the Macro Analyst's primary qualitative input.
 
@@ -134,34 +136,33 @@ async def run_deep_research(
         timeout: Max seconds to wait (default 600s).
     """
     try:
-        import google.generativeai as genai
+        from google import genai
+        from google.genai import types as genai_types
     except ImportError as exc:
         raise ImportError(
-            "google-generativeai is required for Deep Research. "
-            "Add it to requirements.txt and redeploy."
+            "google-genai is required for Deep Research. "
+            "Ensure it is listed in requirements.txt and redeploy."
         ) from exc
 
-    if api_key:
-        genai.configure(api_key=api_key)
-    else:
+    if not api_key:
         import os
-        key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
-        if not key:
+        api_key = os.environ.get("GOOGLE_AI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        if not api_key:
             raise ValueError(
-                "No Gemini API key found. Set GOOGLE_API_KEY env var or ensure "
+                "No Gemini API key found. Set GOOGLE_AI_API_KEY env var or ensure "
                 "'google-ai-api-key' is accessible from Secret Manager."
             )
-        genai.configure(api_key=key)
 
+    client = genai.Client(api_key=api_key)
     prompt = _build_deep_research_prompt(topic, source_package, data_manifest, report_mode)
     logger.info("Deep Research: submitting for topic='%s' mode='%s'", topic, report_mode)
     start = time.monotonic()
 
     def _call():
-        model = genai.GenerativeModel(_DEEP_RESEARCH_MODEL)
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(
+        response = client.models.generate_content(
+            model=_DEEP_RESEARCH_MODEL,
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(
                 max_output_tokens=8192,
                 temperature=0.3,
             ),
