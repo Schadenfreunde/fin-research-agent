@@ -83,12 +83,22 @@ Dockerfile           — python:3.11-slim, installs requirements.txt, copies . t
                                    • NewsAPI: topic-specific recent news (if configured)
                                    Returns dict[label → JSON text] sliced per-agent via
                                    _MACRO_AGENT_SECTIONS + _slice_macro_data()
+0.  macro_mode_detector          — Classifies request as "research" or "both"; sets report_mode
+                                   (runs after pre-fetch, before data agent)
 1b. macro_data_agent             — Topic-specific FRED + web search + source log
 1c. macro_source_validator       — Validates source geography/theme fit; fills gaps
 1d. context_processor            — (optional)
-2.  macro_analyst                — 8-section report (incl. Literature Review = Section 8)
+1e. _run_deep_research_agent()   — Gemini Deep Research API: autonomously expands sources,
+                                   produces Thematic Synthesis Document (5 sections);
+                                   saved to GCS as {run_id}_synthesis.md before Macro Analyst;
+                                   on timeout/error falls back to Source Validator output
+2.  macro_analyst                — 8-section report; primary input: Thematic Synthesis Document
 3.  quant_modeler_macro          — Yield curve, regression, time series, source credibility
-4.  macro_report_compiler        — Assembles 8 sections + Quant Appendix + Source Log
+3b. macro_signal_agent           — [only when report_mode="both"] Runs in parallel with
+                                   quant_modeler_macro; assesses Macro Analyst output;
+                                   emits Tier 1 / 2 / 3 conviction → drives Section 5 title
+4.  macro_report_compiler        — Assembles 8 sections + Quant Appendix + Source Log;
+                                   Section 5 title/content rendered conditionally per tier
 5.  [REVIEW LOOP ≤3 passes]
     fact_checker → review_agent → macro_report_compiler (revision)
 ```
@@ -163,6 +173,9 @@ Change all at once in `config.yaml → models`. Model API calls always use `mode
 | `timeouts.fundamental_analyst_market` | 480s | Raised from 360s after NVDA run showed 2 consecutive timeouts due to search queue contention |
 | `timeouts.quant_modeler_equity` | 480s | |
 | `timeouts.macro_analyst` | 480s | |
+| `timeouts.mode_detector` | 30s | Single classification call; 128 max output tokens |
+| `timeouts.deep_research` | 600s | Gemini Deep Research polling; falls back on timeout |
+| `timeouts.signal_agent` | 180s | Conviction tier assessment; only runs in `both` mode |
 | Equity buy hurdle | 30% return, 25% MoS, 1.7× skew | In `config.yaml → report` |
 | Quality pass/sell | 70 / 60 | Scorecard thresholds |
 
