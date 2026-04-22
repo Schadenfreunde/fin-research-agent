@@ -487,6 +487,22 @@ macro_mode_detector = Agent(
     tools=[],  # Classification only — no external tools needed
 )
 
+macro_signal_agent = Agent(
+    name="macro_signal_agent",
+    model=MODEL_TIER3,
+    description=(
+        "Conviction assessor for the macro pipeline. Reads the Macro Analyst output "
+        "and classifies the trade signal into three tiers: Tier 1 (explicit trade call), "
+        "Tier 2 (directional stance), or Tier 3 (observational only). "
+        "Runs only when report_mode is 'both'. Errs toward giving recommendations."
+    ),
+    instruction=_load_prompt("macro_signal_agent.md"),
+    generate_content_config=genai_types.GenerateContentConfig(
+        max_output_tokens=4096,
+    ),
+    tools=[],  # Reads analyst output only — no external tools
+)
+
 macro_report_compiler = Agent(
     name="macro_report_compiler",
     model=MODEL_TIER_COMPILER,
@@ -560,8 +576,10 @@ MACRO_AGENTS = {
     "macro_mode_detector": macro_mode_detector,
     "macro_data_agent": macro_data_agent,
     "macro_source_validator": macro_source_validator,
+    # Deep Research is NOT an ADK agent — it's called via tools/deep_research.py
     "macro_analyst": macro_analyst,
     "quant_modeler_macro": quant_modeler_macro,
+    "macro_signal_agent": macro_signal_agent,
     "macro_report_compiler": macro_report_compiler,
     "fact_checker": fact_checker,
     "review_agent": review_agent,

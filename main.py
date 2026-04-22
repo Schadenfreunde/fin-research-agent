@@ -93,6 +93,7 @@ from agents.team import (
     macro_data_agent,
     macro_source_validator,
     macro_mode_detector,
+    macro_signal_agent,
     macro_analyst,
     quant_modeler_macro,
     macro_report_compiler,
