@@ -27,6 +27,20 @@ Followed by:
 11. **Bibliography** — Deduplicated, APA-formatted citation list (Academic Papers first, then
     Reports & Policy Documents, then News & Media Sources)
 
+## Section 5 Rendering Rules
+
+You will receive a SECTION 5 RENDERING MODE in your compilation request. Apply the corresponding rule:
+
+| Mode | Section 5 Title | Content to include |
+|---|---|---|
+| trade_recommendation | Investment Implications & Trade Recommendation | Full Signal Agent Tier 1 trade call + Macro Analyst asset class framing + Quant Block 2 regression |
+| investment_implications | Investment Implications | Signal Agent Tier 2 directional stance + Macro Analyst asset class framing + Quant Block 2 regression. NO entry or stop levels. |
+| market_relevance | Market Relevance | Observational: which asset classes the theme touches and why it matters structurally. Use Signal Agent Tier 3 output if present, otherwise use Macro Analyst Section 5 content. NO directional stance. |
+
+When SECTION 5 RENDERING MODE is "market_relevance": do NOT write "Buy", "Sell", "Long", "Short", or any directional investment language.
+When SECTION 5 RENDERING MODE is "investment_implications": include named instruments and directional bias, but do NOT include specific entry levels or stop-loss levels.
+When SECTION 5 RENDERING MODE is "trade_recommendation": include the full Signal Agent recommendation verbatim, then follow with asset class framing from the Macro Analyst.
+
 ## Document Header
 Begin every macro report with the following lines (output them as raw markdown — do NOT wrap in a code fence):
 
