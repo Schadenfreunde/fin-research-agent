@@ -32,6 +32,7 @@ def save_report(
     report_type: str,
     identifier: str,
     file_format: str = "md",
+    file_suffix: str = "",
 ) -> dict:
     """
     Save a research report to Cloud Storage.
@@ -41,6 +42,7 @@ def save_report(
         report_type: "equity" or "macro"
         identifier: Ticker symbol or macro topic slug (e.g., "AAPL", "us-interest-rates")
         file_format: File extension — "md" for Markdown (default)
+        file_suffix: Optional suffix for the filename (e.g., "synthesis" for {timestamp}_synthesis.md)
 
     Returns:
         Dictionary with the storage path and public URL for the report.
@@ -50,7 +52,8 @@ def save_report(
         bucket = client.bucket(_get_bucket())
 
         timestamp = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        blob_name = f"{report_type}/{identifier}/{timestamp}.{file_format}"
+        suffix_part = f"_{file_suffix}" if file_suffix else ""
+        blob_name = f"{report_type}/{identifier}/{timestamp}{suffix_part}.{file_format}"
 
         blob = bucket.blob(blob_name)
         blob.upload_from_string(content, content_type="text/markdown")

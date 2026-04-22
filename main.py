@@ -1773,11 +1773,11 @@ async def _run_deep_research_agent(
         )
 
         # Save synthesis document to GCS immediately (before Macro Analyst runs)
-        # Since save_report() doesn't support a suffix parameter, use a custom identifier
         synthesis_save = save_report(
             content=raw_output,
-            report_type="macro-synthesis",   # separate report_type prefix in GCS
-            identifier=f"{identifier}/{run_id}_synthesis",
+            report_type="macro",
+            identifier=identifier,
+            file_suffix="synthesis",
         )
         if synthesis_save.get("saved"):
             logger.info("[%s] Synthesis document saved to %s", run_id, synthesis_save.get("gcs_uri"))
