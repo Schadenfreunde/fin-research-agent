@@ -2092,7 +2092,7 @@ async def _run_macro_pipeline(topic: str, run_id: str,
         f"--- SIGNAL AGENT OUTPUT ---\n"
         f"{_clean_for_compiler('Signal Agent', signal_parsed['full_text'])}\n\n"
         f"--- MACRO SOURCE VALIDATOR OUTPUT (for Source Log) ---\n"
-        f"{_clean_for_compiler('Source Validator', source_validator_out)}"
+        f"{_clean_for_compiler('Source Validator', source_validator_out)}\n"
     )
     logger.info("[%s] STEP 4: Macro Report Compiler (assembling 8-section report)...", run_id)
     compiled = await _run_agent(
