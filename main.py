@@ -1670,12 +1670,28 @@ async def _run_deep_research_agent(
     if run_stats is not None:
         record_agent_start(run_stats, "deep-research")
 
-    start_time = __import__("datetime").datetime.utcnow()
     raw_output = ""
     status = "success"
 
     try:
         api_key = _get_google_ai_api_key()
+        if not api_key:
+            logger.warning("[%s] Phase 1e: No google-ai-api-key available — falling back to Source Validator output", run_id)
+            status = "error"
+            raw_output = source_package  # fallback
+            if run_stats is not None:
+                record_agent_complete(
+                    run_stats,
+                    "deep-research",
+                    status=status,
+                    output_length=len(raw_output),
+                    model="gemini-deep-research",
+                    input_tokens=0,
+                    output_tokens=0,
+                    search_calls=0,
+                )
+            return raw_output
+
         raw_output = await run_deep_research(
             topic=topic,
             source_package=source_package,
