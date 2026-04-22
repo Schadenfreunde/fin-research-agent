@@ -1650,6 +1650,66 @@ def _parse_mode_detector_output(raw: str) -> tuple[str, str]:
     return report_mode, mode_rationale
 
 
+def _parse_signal_agent_output(raw: str) -> dict:
+    """
+    Parse Signal Agent output into a structured dict.
+
+    Returns:
+        {
+            "tier": int (1, 2, or 3),
+            "tier_rationale": str,
+            "recommendation": str,
+            "full_text": str,
+        }
+    Falls back to tier=3 on parse failure.
+    """
+    result = {
+        "tier": 3,
+        "tier_rationale": "Unable to parse signal agent output — defaulting to observational.",
+        "recommendation": raw,
+        "full_text": raw,
+    }
+    lines = raw.splitlines()
+    in_recommendation = False
+    recommendation_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.lower().startswith("conviction tier:"):
+            try:
+                tier_str = stripped.split(":", 1)[1].strip()
+                tier_val = int(tier_str[0])  # take first character as digit
+                if tier_val in (1, 2, 3):
+                    result["tier"] = tier_val
+            except (ValueError, IndexError):
+                pass
+        elif stripped.lower().startswith("tier rationale:"):
+            result["tier_rationale"] = stripped.split(":", 1)[1].strip()
+        elif stripped.startswith("### Recommendation"):
+            in_recommendation = True
+        elif in_recommendation:
+            recommendation_lines.append(line)
+
+    if recommendation_lines:
+        result["recommendation"] = "\n".join(recommendation_lines).strip()
+
+    return result
+
+
+def _get_section5_mode(report_mode: str, signal_tier: int) -> str:
+    """
+    Determine the Section 5 rendering mode for the Report Compiler.
+    Returns a string label the compiler uses to select the rendering rule.
+    """
+    if report_mode == "research" or signal_tier == 3:
+        return "market_relevance"
+    elif signal_tier == 1:
+        return "trade_recommendation"
+    elif signal_tier == 2:
+        return "investment_implications"
+    return "market_relevance"  # safe default
+
+
 async def _run_deep_research_agent(
     topic: str,
     source_package: str,
@@ -1978,28 +2038,61 @@ async def _run_macro_pipeline(topic: str, run_id: str,
         f"Produce geography-aware econometric models, yield curve analysis (using indicators "
         f"for the topic's geography), and source credibility evaluation."
     )
-    logger.info("[%s] STEP 3: Quant Modeler — macro (econometric models, yield curve analysis)...", run_id)
-    quant_out = await _run_agent(
-        quant_modeler_macro, quant_context, "quant-macro", run_id,
-        timeout_seconds=_QUANT_MACRO_TIMEOUT, run_stats=run_stats,
-    )
+    # ── Step 3: Quant Modeler (Macro) + Signal Agent (parallel) ──────────────
+    logger.info("[%s] STEP 3: Quant Modeler (macro) starting...", run_id)
+    if report_mode == "both":
+        logger.info("[%s] STEP 3b: Signal Agent also starting (report_mode='both')...", run_id)
+        _signal_context = (
+            f"SIGNAL ASSESSMENT REQUEST\n"
+            f"Topic: {topic}\n"
+            f"Report mode: {report_mode}\n\n"
+            f"MACRO ANALYST OUTPUT:\n{analysis_out}\n\n"
+            f"Assess conviction tier and produce the appropriate recommendation level."
+        )
+        quant_out, signal_raw = await asyncio.gather(
+            _run_agent(
+                quant_modeler_macro, quant_context, "quant-macro", run_id,
+                timeout_seconds=_QUANT_MACRO_TIMEOUT, run_stats=run_stats,
+            ),
+            _run_agent(
+                macro_signal_agent, _signal_context, "signal-agent", run_id,
+                timeout_seconds=_SIGNAL_AGENT_TIMEOUT, run_stats=run_stats,
+            ),
+        )
+        signal_parsed = _parse_signal_agent_output(signal_raw)
+        logger.info("[%s] Signal Agent: tier=%d — %s", run_id, signal_parsed["tier"], signal_parsed["tier_rationale"])
+    else:
+        quant_out = await _run_agent(
+            quant_modeler_macro, quant_context, "quant-macro", run_id,
+            timeout_seconds=_QUANT_MACRO_TIMEOUT, run_stats=run_stats,
+        )
+        signal_parsed = {"tier": 3, "tier_rationale": "Research mode — no signal assessment.", "recommendation": "", "full_text": ""}
+        logger.info("[%s] STEP 3b: Skipping Signal Agent (report_mode='%s')", run_id, report_mode)
+
+    # Store signal tier on run_stats for meta block / debug report
+    if run_stats is not None:
+        run_stats.signal_tier = signal_parsed["tier"]          # dynamic attribute
+        run_stats.signal_rationale = signal_parsed["tier_rationale"]  # dynamic attribute
 
     # ── Step 4: Macro Report Compiler ─────────────────────────────────────────
+    _section5_mode = _get_section5_mode(report_mode, signal_parsed["tier"])
     # Sanitise placeholders before passing — raw [ERROR:] strings cause 0 output tokens.
     compile_context = (
         f"MACRO REPORT COMPILATION REQUEST\n"
         f"Topic: {topic}\n"
         f"Run ID: {run_id}\n\n"
-        f"Assemble the following outputs into the final 8-section macro research report "
-        f"(Sections 1–7 + Section 8 Literature Review). "
-        f"Merge the quant findings into the appropriate sections (2, 4, 5, 6). "
-        f"Paste Section 8 (Literature Review) verbatim from the Macro Analyst output.\n\n"
+        f"REPORT MODE: {report_mode}\n"
+        f"SECTION 5 RENDERING MODE: {_section5_mode}\n\n"
+        f"Assemble the following outputs into the final 8-section macro research report. "
+        f"Apply the Section 5 rendering rule for '{_section5_mode}' as defined in your instructions.\n\n"
         f"--- MACRO ANALYST OUTPUT ---\n"
         f"{_clean_for_compiler('Macro Analyst', analysis_out)}\n\n"
         f"--- QUANT MODELER OUTPUT ---\n"
         f"{_clean_for_compiler('Quant Modeler', quant_out)}\n\n"
+        f"--- SIGNAL AGENT OUTPUT ---\n"
+        f"{_clean_for_compiler('Signal Agent', signal_parsed['full_text'])}\n\n"
         f"--- MACRO SOURCE VALIDATOR OUTPUT (for Source Log) ---\n"
-        f"{_clean_for_compiler('Source Validator', source_validator_out)}\n"
+        f"{_clean_for_compiler('Source Validator', source_validator_out)}"
     )
     logger.info("[%s] STEP 4: Macro Report Compiler (assembling 8-section report)...", run_id)
     compiled = await _run_agent(
