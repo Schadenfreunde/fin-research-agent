@@ -189,11 +189,12 @@ def _get_google_ai_api_key() -> str | None:
     """
     Load the Gemini Developer API key from Secret Manager.
     Secret name: "google-ai-api-key" (already created in GCP Secret Manager).
+    Cloud Run injects the secret as env var GOOGLE_AI_API_KEY via --set-secrets.
     Used exclusively by the Deep Research agent — all other agents use Vertex AI.
     """
     try:
         from tools.http_client import get_api_key
-        return get_api_key("google-ai-api-key")
+        return get_api_key("GOOGLE_AI_API_KEY", "google-ai-api-key", required=False) or None
     except Exception as exc:
         logger.warning("Could not load 'google-ai-api-key' from Secret Manager: %s", exc)
         return None
