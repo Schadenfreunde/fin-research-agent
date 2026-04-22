@@ -1649,6 +1649,95 @@ def _parse_mode_detector_output(raw: str) -> tuple[str, str]:
     return report_mode, mode_rationale
 
 
+async def _run_deep_research_agent(
+    topic: str,
+    source_package: str,
+    data_manifest: str,
+    report_mode: str,
+    run_id: str,
+    identifier: str,
+    run_stats: "RunStats" = None,
+) -> str:
+    """
+    Run the Gemini Deep Research agent and save the Thematic Synthesis Document to GCS.
+
+    Returns the synthesis document text (full_text from parse result).
+    On failure/timeout, logs the error and returns the source_package as fallback
+    so the Macro Analyst can still run in degraded mode.
+    """
+    logger.info("[%s] Phase 1e: Gemini Deep Research (expanding sources, thematic synthesis)...", run_id)
+
+    if run_stats is not None:
+        record_agent_start(run_stats, "deep-research")
+
+    start_time = __import__("datetime").datetime.utcnow()
+    raw_output = ""
+    status = "success"
+
+    try:
+        api_key = _get_google_ai_api_key()
+        raw_output = await run_deep_research(
+            topic=topic,
+            source_package=source_package,
+            data_manifest=data_manifest,
+            report_mode=report_mode,
+            api_key=api_key,
+            timeout=_DEEP_RESEARCH_TIMEOUT,
+        )
+        parsed = parse_synthesis_document(raw_output)
+        if not parsed["has_all_sections"]:
+            logger.warning(
+                "[%s] Deep Research output missing sections: %s",
+                run_id, parsed["missing_sections"]
+            )
+        logger.info(
+            "[%s] Phase 1e: Deep Research complete — %d chars, %d additional sources",
+            run_id, len(raw_output), parsed["sources_added_count"]
+        )
+
+        # Save synthesis document to GCS immediately (before Macro Analyst runs)
+        # Since save_report() doesn't support a suffix parameter, use a custom identifier
+        synthesis_save = save_report(
+            content=raw_output,
+            report_type="macro-synthesis",   # separate report_type prefix in GCS
+            identifier=f"{identifier}/{run_id}_synthesis",
+        )
+        if synthesis_save.get("saved"):
+            logger.info("[%s] Synthesis document saved to %s", run_id, synthesis_save.get("gcs_uri"))
+        else:
+            logger.warning("[%s] Synthesis document save failed (non-fatal): %s",
+                           run_id, synthesis_save.get("error"))
+
+    except TimeoutError as e:
+        logger.warning("[%s] Phase 1e: Deep Research TIMEOUT — %s — falling back to Source Validator output", run_id, e)
+        status = "timeout"
+        raw_output = source_package  # fallback
+    except Exception as e:
+        logger.error("[%s] Phase 1e: Deep Research ERROR — %s — falling back to Source Validator output", run_id, e)
+        status = "error"
+        raw_output = source_package  # fallback
+
+    if run_stats is not None:
+        end_time = __import__("datetime").datetime.utcnow()
+        # Record as a lightweight agent entry (no token counts — Deep Research bills per query)
+        record_agent_complete(
+            run_stats,
+            label="deep-research",
+            status=status,
+            output_length=len(raw_output),
+            model="gemini-deep-research",
+            input_tokens=0,
+            output_tokens=0,
+            search_calls=0,
+            # Cost is per-query, not per-token — tracked separately via config.yaml
+        )
+        _dr_cost = CONFIG.get("pricing", {}).get("deep_research_cost_per_query", 0.0)
+        if _dr_cost and status == "success":
+            run_stats.total_cost_usd = round(run_stats.total_cost_usd + _dr_cost, 6)
+
+    return raw_output
+
+
 # ── Macro pipeline ─────────────────────────────────────────────────────────────
 
 async def _run_macro_pipeline(topic: str, run_id: str,
@@ -1820,6 +1909,19 @@ async def _run_macro_pipeline(topic: str, run_id: str,
         run_stats=run_stats,
     )
 
+    # ── Phase 1e: Gemini Deep Research — thematic synthesis + source expansion ──
+    _identifier = topic.replace(" ", "-").replace("/", "-").lower()
+    synthesis_doc = await _run_deep_research_agent(
+        topic=topic,
+        source_package=source_validator_out,
+        data_manifest=_macro_data_manifest(macro_data_dict),
+        report_mode=report_mode,
+        run_id=run_id,
+        identifier=_identifier,
+        run_stats=run_stats,
+    )
+    logger.info("[%s] Phase 1e: Synthesis document ready (%d chars)", run_id, len(synthesis_doc))
+
     # ── Step 2: Macro Analyst ──────────────────────────────────────────────────
     analysis_context = (
         f"MACRO RESEARCH REQUEST\n"
@@ -1830,9 +1932,9 @@ async def _run_macro_pipeline(topic: str, run_id: str,
         f"cross-market transmission mechanism to the topic can be stated.\n\n"
         f"PRE-GATHERED MACRO DATA (background context — DO NOT re-fetch):\n"
         f"{_slice_macro_data(macro_data_dict, 'macro-analyst')}\n\n"
-        f"MACRO DATA AGENT OUTPUT (topic-specific data + web sources):\n{data_output}\n\n"
-        f"MACRO SOURCE VALIDATOR OUTPUT (validated + augmented source package):\n"
-        f"{source_validator_out}\n\n"
+        f"THEMATIC SYNTHESIS DOCUMENT (Deep Research — expanded sources + synthesis narrative):\n"
+        f"{synthesis_doc}\n\n"
+        f"MACRO DATA AGENT OUTPUT (topic-specific data — for quantitative context):\n{data_output}\n\n"
         + (f"ENRICHED USER CONTEXT:\n{enriched_context_note}\n\n" if enriched_context_note else "")
         + f"Produce the 8-section macro research report (Sections 1–7 as specified, plus "
         f"Section 8 Literature Review synthesizing the academic sources in the validated package)."
