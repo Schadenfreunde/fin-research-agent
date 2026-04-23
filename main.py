@@ -1745,8 +1745,7 @@ async def _run_deep_research_agent(
                 record_agent_complete(
                     run_stats,
                     "deep-research",
-                    status=status,
-                    output_length=len(raw_output),
+                    "[ERROR: No google-ai-api-key available — Deep Research skipped.]",
                     model="gemini-deep-research",
                     input_tokens=0,
                     output_tokens=0,
@@ -1765,8 +1764,8 @@ async def _run_deep_research_agent(
         parsed = parse_synthesis_document(raw_output)
         if not parsed["has_all_sections"]:
             logger.warning(
-                "[%s] Deep Research output missing sections: %s",
-                run_id, parsed["missing_sections"]
+                "[%s] Deep Research output missing sections: %s — first 800 chars: %r",
+                run_id, parsed["missing_sections"], raw_output[:800]
             )
         logger.info(
             "[%s] Phase 1e: Deep Research complete — %d chars, %d additional sources",
@@ -1796,13 +1795,19 @@ async def _run_deep_research_agent(
         raw_output = source_package  # fallback
 
     if run_stats is not None:
-        end_time = __import__("datetime").datetime.utcnow()
-        # Record as a lightweight agent entry (no token counts — Deep Research bills per query)
+        # _detect_status() infers status from the result string prefix — pass a
+        # properly prefixed placeholder for error/timeout so the debug report
+        # classifies them correctly. For success, pass the actual synthesis text.
+        if status == "timeout":
+            _dr_stats_result = "[AGENT TIMEOUT: Deep Research timed out — pipeline used fallback output.]"
+        elif status == "error":
+            _dr_stats_result = "[ERROR: Deep Research failed — pipeline used fallback output.]"
+        else:
+            _dr_stats_result = raw_output  # success: actual synthesis text
         record_agent_complete(
             run_stats,
-            label="deep-research",
-            status=status,
-            output_length=len(raw_output),
+            "deep-research",
+            _dr_stats_result,
             model="gemini-deep-research",
             input_tokens=0,
             output_tokens=0,
