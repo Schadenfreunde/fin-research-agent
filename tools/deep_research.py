@@ -111,6 +111,9 @@ def parse_synthesis_document(raw: str) -> dict:
     return result
 
 
+_POLL_INTERVAL = 15  # seconds between status checks
+
+
 async def run_deep_research(
     topic: str,
     source_package: str,
@@ -122,7 +125,12 @@ async def run_deep_research(
     """
     Call the Gemini Deep Research API and return the synthesis text.
 
-    Uses the google-genai SDK (new, replaces deprecated google-generativeai).
+    Uses the Interactions API (client.interactions.create) — the only API surface
+    supported by Deep Research models. The standard generate_content endpoint
+    returns 400 INVALID_ARGUMENT for these models.
+
+    The interaction is submitted with background=True and polled every
+    _POLL_INTERVAL seconds until completed or timeout is reached.
 
     On timeout or API error, raises an exception — callers catch and fall back
     to source_package as the Macro Analyst's primary qualitative input.
@@ -133,11 +141,10 @@ async def run_deep_research(
         data_manifest: Compact macro data manifest (~400 words).
         report_mode: "research" or "both".
         api_key: Gemini Developer API key. Loaded from Secret Manager if None.
-        timeout: Max seconds to wait (default 600s).
+        timeout: Max seconds to wait for completion (default 600s).
     """
     try:
         from google import genai
-        from google.genai import types as genai_types
     except ImportError as exc:
         raise ImportError(
             "google-genai is required for Deep Research. "
@@ -146,7 +153,11 @@ async def run_deep_research(
 
     if not api_key:
         import os
-        api_key = os.environ.get("GOOGLE_AI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        api_key = (
+            os.environ.get("GOOGLE_AI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY")
+            or os.environ.get("GEMINI_API_KEY")
+        )
         if not api_key:
             raise ValueError(
                 "No Gemini API key found. Set GOOGLE_AI_API_KEY env var or ensure "
@@ -154,29 +165,63 @@ async def run_deep_research(
             )
 
     # vertexai=False overrides the GOOGLE_GENAI_USE_VERTEXAI=1 env var set globally
-    # for all other agents. Deep Research is only available on the Gemini Developer API —
-    # it does not exist as a Vertex AI publisher model. Without this flag the SDK routes
-    # through Vertex AI and returns a 404 NOT_FOUND.
+    # for all other agents. Deep Research is only on the Gemini Developer API —
+    # it returns 404 NOT_FOUND when routed through Vertex AI.
     client = genai.Client(api_key=api_key, vertexai=False)
     prompt = _build_deep_research_prompt(topic, source_package, data_manifest, report_mode)
     logger.info("Deep Research: submitting for topic='%s' mode='%s'", topic, report_mode)
     start = time.monotonic()
 
-    def _call():
-        response = client.models.generate_content(
-            model=_DEEP_RESEARCH_MODEL,
-            contents=prompt,
-            config=genai_types.GenerateContentConfig(
-                max_output_tokens=8192,
-                temperature=0.3,
-            ),
+    def _submit():
+        """Submit the background interaction and return the interaction ID."""
+        interaction = client.interactions.create(
+            input=prompt,
+            agent=_DEEP_RESEARCH_MODEL,
+            background=True,
         )
-        return response.text
+        return interaction.id
+
+    def _poll(interaction_id: str) -> str:
+        """
+        Poll until the interaction completes, fails, or the deadline passes.
+        Returns the synthesis text on success.
+        """
+        deadline = start + timeout
+        while True:
+            interaction = client.interactions.get(interaction_id)
+            status = interaction.status
+            elapsed = time.monotonic() - start
+            logger.info(
+                "Deep Research: id=%s status=%s elapsed=%.0fs",
+                interaction_id, status, elapsed,
+            )
+
+            if status == "completed":
+                if not interaction.outputs:
+                    raise ValueError(
+                        f"Deep Research interaction {interaction_id} completed with no outputs"
+                    )
+                return interaction.outputs[-1].text
+
+            if status in ("failed", "cancelled", "error"):
+                raise RuntimeError(
+                    f"Deep Research interaction {interaction_id} ended with status={status}"
+                )
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(
+                    f"Deep Research timed out after {elapsed:.0f}s for topic='{topic}'"
+                )
+            time.sleep(min(_POLL_INTERVAL, remaining))
 
     loop = asyncio.get_event_loop()
+    interaction_id = await loop.run_in_executor(None, _submit)
+    logger.info("Deep Research: submitted interaction_id=%s", interaction_id)
+
     try:
         result = await asyncio.wait_for(
-            loop.run_in_executor(None, _call),
+            loop.run_in_executor(None, _poll, interaction_id),
             timeout=timeout,
         )
     except asyncio.TimeoutError:
