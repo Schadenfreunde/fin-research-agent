@@ -153,7 +153,11 @@ async def run_deep_research(
                 "'google-ai-api-key' is accessible from Secret Manager."
             )
 
-    client = genai.Client(api_key=api_key)
+    # vertexai=False overrides the GOOGLE_GENAI_USE_VERTEXAI=1 env var set globally
+    # for all other agents. Deep Research is only available on the Gemini Developer API —
+    # it does not exist as a Vertex AI publisher model. Without this flag the SDK routes
+    # through Vertex AI and returns a 404 NOT_FOUND.
+    client = genai.Client(api_key=api_key, vertexai=False)
     prompt = _build_deep_research_prompt(topic, source_package, data_manifest, report_mode)
     logger.info("Deep Research: submitting for topic='%s' mode='%s'", topic, report_mode)
     start = time.monotonic()
